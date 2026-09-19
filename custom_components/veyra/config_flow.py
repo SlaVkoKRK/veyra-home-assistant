@@ -17,7 +17,19 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import VeyraApi, VeyraApiError
-from .const import CONF_NOTIFY_TARGETS, DEFAULT_PORT, DOMAIN
+from .const import (
+    CONF_FLOOD_MUTE_DURATION_MINUTES,
+    CONF_FLOOD_MUTE_ENABLED,
+    CONF_FLOOD_MUTE_THRESHOLD,
+    CONF_FLOOD_MUTE_WINDOW_SECONDS,
+    CONF_NOTIFY_TARGETS,
+    DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
+    DEFAULT_FLOOD_MUTE_ENABLED,
+    DEFAULT_FLOOD_MUTE_THRESHOLD,
+    DEFAULT_FLOOD_MUTE_WINDOW_SECONDS,
+    DEFAULT_PORT,
+    DOMAIN,
+)
 
 
 class VeyraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -67,6 +79,23 @@ class VeyraOptionsFlow(OptionsFlow):
         if user_input is not None:
             options = dict(self.config_entry.options)
             options[CONF_NOTIFY_TARGETS] = list(user_input.get(CONF_NOTIFY_TARGETS, []))
+            options[CONF_FLOOD_MUTE_ENABLED] = bool(
+                user_input.get(CONF_FLOOD_MUTE_ENABLED, DEFAULT_FLOOD_MUTE_ENABLED)
+            )
+            options[CONF_FLOOD_MUTE_THRESHOLD] = int(
+                user_input.get(CONF_FLOOD_MUTE_THRESHOLD, DEFAULT_FLOOD_MUTE_THRESHOLD)
+            )
+            options[CONF_FLOOD_MUTE_WINDOW_SECONDS] = int(
+                user_input.get(
+                    CONF_FLOOD_MUTE_WINDOW_SECONDS, DEFAULT_FLOOD_MUTE_WINDOW_SECONDS
+                )
+            )
+            options[CONF_FLOOD_MUTE_DURATION_MINUTES] = int(
+                user_input.get(
+                    CONF_FLOOD_MUTE_DURATION_MINUTES,
+                    DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
+                )
+            )
             return self.async_create_entry(data=options)
 
         services = self.hass.services.async_services().get("notify", {})
@@ -96,5 +125,72 @@ class VeyraOptionsFlow(OptionsFlow):
                     mode=SelectSelectorMode.LIST,
                 )
             )
+
+        fields[
+            vol.Optional(
+                CONF_FLOOD_MUTE_ENABLED,
+                default=bool(
+                    self.config_entry.options.get(
+                        CONF_FLOOD_MUTE_ENABLED, DEFAULT_FLOOD_MUTE_ENABLED
+                    )
+                ),
+            )
+        ] = bool
+        fields[
+            vol.Optional(
+                CONF_FLOOD_MUTE_THRESHOLD,
+                default=int(
+                    self.config_entry.options.get(
+                        CONF_FLOOD_MUTE_THRESHOLD, DEFAULT_FLOOD_MUTE_THRESHOLD
+                    )
+                ),
+            )
+        ] = vol.All(vol.Coerce(int), vol.Range(min=3, max=50))
+
+        current_window = str(
+            int(
+                self.config_entry.options.get(
+                    CONF_FLOOD_MUTE_WINDOW_SECONDS, DEFAULT_FLOOD_MUTE_WINDOW_SECONDS
+                )
+            )
+        )
+        fields[
+            vol.Optional(CONF_FLOOD_MUTE_WINDOW_SECONDS, default=current_window)
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(value="30", label="30 s"),
+                    SelectOptionDict(value="60", label="60 s"),
+                    SelectOptionDict(value="90", label="90 s"),
+                    SelectOptionDict(value="120", label="2 min"),
+                    SelectOptionDict(value="180", label="3 min"),
+                ],
+                multiple=False,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+        current_duration = str(
+            int(
+                self.config_entry.options.get(
+                    CONF_FLOOD_MUTE_DURATION_MINUTES,
+                    DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
+                )
+            )
+        )
+        fields[
+            vol.Optional(CONF_FLOOD_MUTE_DURATION_MINUTES, default=current_duration)
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(value="10", label="10 min"),
+                    SelectOptionDict(value="15", label="15 min"),
+                    SelectOptionDict(value="20", label="20 min"),
+                    SelectOptionDict(value="30", label="30 min"),
+                ],
+                multiple=False,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(fields))

@@ -23,16 +23,17 @@
     "step": {
       "init": {
         "title": "Veyra notifications",
-        "description": "Select Home Assistant Companion devices that should receive Veyra notifications. All detected devices are selected by default and can be individually enabled or disabled.",
+        "description": "Select Home Assistant Companion devices that should receive Veyra notifications. Every new/update event published by Veyra is forwarded immediately, like the MQTT automation.",
         "data": {
-          "notify_targets": "Notification devices",
-          "notification_update_seconds": "Minimum image update interval",
-          "notification_alert_repeat_seconds": "Repeat vibration / sound during an active event (0 = disabled)"
+          "notify_targets": "Notification devices"
         }
       }
     }
   },
   "entity": {
+    "camera": {
+      "live_view": {"name": "Live view"}
+    },
     "switch": {
       "ai_detection": {"name": "AI Detection"},
       "notifications": {"name": "Notifications"},

@@ -1,0 +1,59 @@
+{
+  "title": "Veyra",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połącz z Veyra",
+        "description": "Podaj tylko adres IP/nazwę hosta oraz port WWW Veyra. Kamery, MQTT i klasy modelu zostaną wykryte automatycznie.",
+        "data": {
+          "host": "Adres IP / host",
+          "port": "Port"
+        },
+        "data_description": {
+          "host": "Np. 10.10.0.20",
+          "port": "Domyślnie 8080"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z Veyra.",
+      "invalid_response": "Veyra zwróciła nieprawidłową odpowiedź."
+    },
+    "abort": {
+      "already_configured": "Ta instancja Veyra jest już skonfigurowana."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Powiadomienia Veyra",
+        "description": "Wybierz telefony z aplikacją Home Assistant. Brak wyboru oznacza wszystkie dostępne usługi notify.mobile_app_*. Poziom alarmu dla każdej klasy ustawiasz encjami konfiguracji Veyra.",
+        "data": {
+          "notify_targets": "Urządzenia mobilne",
+          "notification_update_seconds": "Minimalny odstęp aktualizacji powiadomienia"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "ai_detection": {"name": "AI Detection"},
+      "notifications": {"name": "Powiadomienia"},
+      "snapshots": {"name": "Snapshoty"}
+    },
+    "binary_sensor": {
+      "motion": {"name": "Ruch"},
+      "objects": {"name": "Obiekt"},
+      "night": {"name": "Tryb nocny"},
+      "online": {"name": "Połączenie"}
+    },
+    "sensor": {
+      "cpu_usage": {"name": "CPU"},
+      "igpu_usage": {"name": "Intel GPU"},
+      "coral_latency": {"name": "Coral latency"},
+      "fps": {"name": "FPS"},
+      "active_objects": {"name": "Aktywne obiekty"},
+      "detector_latency": {"name": "Detector latency"}
+    }
+  }
+}

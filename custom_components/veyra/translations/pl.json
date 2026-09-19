@@ -27,16 +27,17 @@
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz urządzenia z aplikacją Home Assistant, które mają otrzymywać powiadomienia. Wszystkie wykryte urządzenia są domyślnie zaznaczone; możesz każde zaznaczyć lub odznaczyć. Poziom alarmu dla każdej klasy ustawiasz encjami konfiguracji Veyra.",
+        "description": "Wybierz urządzenia z aplikacją Home Assistant, które mają otrzymywać powiadomienia. Każdy event new/update opublikowany przez Veyra jest wysyłany od razu, tak jak w automatyzacji MQTT. Poziom alarmu dla każdej klasy ustawiasz encjami konfiguracji Veyra.",
         "data": {
-          "notify_targets": "Urządzenia otrzymujące powiadomienia",
-          "notification_update_seconds": "Minimalny odstęp aktualizacji zdjęcia",
-          "notification_alert_repeat_seconds": "Ponowienie wibracji / dźwięku podczas trwającego zdarzenia (0 = wyłączone)"
+          "notify_targets": "Urządzenia otrzymujące powiadomienia"
         }
       }
     }
   },
   "entity": {
+    "camera": {
+      "live_view": {"name": "Podgląd"}
+    },
     "switch": {
       "ai_detection": {"name": "AI Detection"},
       "notifications": {"name": "Powiadomienia"},

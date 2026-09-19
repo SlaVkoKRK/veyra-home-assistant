@@ -16,7 +16,7 @@ Integracja sama pobiera kamery, port go2rtc, topic MQTT i klasy aktywnego modelu
 
 ## Wymagania
 
-- Veyra **0.8.1+**,
+- Veyra **0.8.2+**,
 - Home Assistant **2025.6.0+**,
 - skonfigurowana integracja MQTT w Home Assistant, korzystająca z tego samego brokera co Veyra,
 - Home Assistant Companion App na telefonach, które mają otrzymywać push.
@@ -84,7 +84,7 @@ W tym samym miejscu ustawiasz minimalny odstęp odświeżania powiadomienia (dom
 
 Integracja nie ma zaszytej listy 17 klas.
 
-Veyra 0.8.1 wystawia przez API metadane aktywnego modelu. Obsługiwane jest dowolnie wiele klas — np. 17 dla obecnego EdgeTPU albo większe modele OpenVINO/ONNX w przyszłości.
+Veyra 0.8.2 wystawia przez API metadane aktywnego modelu. Obsługiwane jest dowolnie wiele klas — np. 17 dla obecnego EdgeTPU albo większe modele OpenVINO/ONNX w przyszłości.
 
 Veyra szuka nazw klas w tej kolejności:
 

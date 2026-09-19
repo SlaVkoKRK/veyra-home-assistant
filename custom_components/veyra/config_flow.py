@@ -10,9 +10,6 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -20,15 +17,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import VeyraApi, VeyraApiError
-from .const import (
-    CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
-    CONF_NOTIFICATION_UPDATE_SECONDS,
-    CONF_NOTIFY_TARGETS,
-    DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
-    DEFAULT_NOTIFICATION_UPDATE_SECONDS,
-    DEFAULT_PORT,
-    DOMAIN,
-)
+from .const import CONF_NOTIFY_TARGETS, DEFAULT_PORT, DOMAIN
 
 
 class VeyraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -47,7 +36,9 @@ class VeyraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "invalid_response"
                 else:
                     await self.async_set_unique_id(instance_id)
-                    self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: port})
+                    self._abort_if_unique_id_configured(
+                        updates={CONF_HOST: host, CONF_PORT: port}
+                    )
                     return self.async_create_entry(
                         title=str(info.get("name") or "Veyra"),
                         data={CONF_HOST: host, CONF_PORT: port},
@@ -76,18 +67,16 @@ class VeyraOptionsFlow(OptionsFlow):
         if user_input is not None:
             options = dict(self.config_entry.options)
             options[CONF_NOTIFY_TARGETS] = list(user_input.get(CONF_NOTIFY_TARGETS, []))
-            options[CONF_NOTIFICATION_UPDATE_SECONDS] = float(
-                user_input[CONF_NOTIFICATION_UPDATE_SECONDS]
-            )
-            options[CONF_NOTIFICATION_ALERT_REPEAT_SECONDS] = float(
-                user_input[CONF_NOTIFICATION_ALERT_REPEAT_SECONDS]
-            )
             return self.async_create_entry(data=options)
 
         services = self.hass.services.async_services().get("notify", {})
-        mobile = sorted(str(name) for name in services if str(name).startswith("mobile_app_"))
+        mobile = sorted(
+            str(name) for name in services if str(name).startswith("mobile_app_")
+        )
         if CONF_NOTIFY_TARGETS in self.config_entry.options:
-            current_targets = list(self.config_entry.options.get(CONF_NOTIFY_TARGETS, []) or [])
+            current_targets = list(
+                self.config_entry.options.get(CONF_NOTIFY_TARGETS, []) or []
+            )
         else:
             current_targets = list(mobile)
 
@@ -108,43 +97,4 @@ class VeyraOptionsFlow(OptionsFlow):
                 )
             )
 
-        fields[
-            vol.Required(
-                CONF_NOTIFICATION_UPDATE_SECONDS,
-                default=float(
-                    self.config_entry.options.get(
-                        CONF_NOTIFICATION_UPDATE_SECONDS,
-                        DEFAULT_NOTIFICATION_UPDATE_SECONDS,
-                    )
-                ),
-            )
-        ] = NumberSelector(
-            NumberSelectorConfig(
-                min=0.5,
-                max=30.0,
-                step=0.5,
-                mode=NumberSelectorMode.BOX,
-                unit_of_measurement="s",
-            )
-        )
-
-        fields[
-            vol.Required(
-                CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
-                default=float(
-                    self.config_entry.options.get(
-                        CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
-                        DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
-                    )
-                ),
-            )
-        ] = NumberSelector(
-            NumberSelectorConfig(
-                min=0.0,
-                max=60.0,
-                step=1.0,
-                mode=NumberSelectorMode.BOX,
-                unit_of_measurement="s",
-            )
-        )
         return self.async_show_form(step_id="init", data_schema=vol.Schema(fields))

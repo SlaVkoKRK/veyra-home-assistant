@@ -1,1 +1,0 @@
-Branding assets are managed by ChatGPT for Veyra.

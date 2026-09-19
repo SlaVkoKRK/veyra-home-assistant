@@ -13,6 +13,19 @@ CONF_CLASS_LEVELS = "class_levels"
 CONF_NOTIFICATION_UPDATE_SECONDS = "notification_update_seconds"
 CONF_NOTIFICATION_ALERT_REPEAT_SECONDS = "notification_alert_repeat_seconds"
 
+# Notification flood protection / temporary per-camera mute.
+CONF_FLOOD_MUTE_ENABLED = "flood_mute_enabled"
+CONF_FLOOD_MUTE_THRESHOLD = "flood_mute_threshold"
+CONF_FLOOD_MUTE_WINDOW_SECONDS = "flood_mute_window_seconds"
+CONF_FLOOD_MUTE_DURATION_MINUTES = "flood_mute_duration_minutes"
+
+DEFAULT_FLOOD_MUTE_ENABLED = True
+DEFAULT_FLOOD_MUTE_THRESHOLD = 12
+DEFAULT_FLOOD_MUTE_WINDOW_SECONDS = 90
+DEFAULT_FLOOD_MUTE_DURATION_MINUTES = 15
+# Do not repeatedly ask about the same camera when the user chooses to keep it active.
+DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS = 15 * 60
+
 LEVEL_OFF = "off"
 LEVEL_SILENT = "silent"
 LEVEL_NORMAL = "normal"

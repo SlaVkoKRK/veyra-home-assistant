@@ -20,9 +20,9 @@ from .const import (
     CONF_FLOOD_MUTE_THRESHOLD,
     CONF_FLOOD_MUTE_WINDOW_SECONDS,
     CONF_NOTIFY_TARGETS,
+    DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS,
     DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
     DEFAULT_FLOOD_MUTE_ENABLED,
-    DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS,
     DEFAULT_FLOOD_MUTE_THRESHOLD,
     DEFAULT_FLOOD_MUTE_WINDOW_SECONDS,
     LEVEL_CRITICAL,
@@ -82,7 +82,7 @@ def _notification_version(after: dict[str, Any]) -> int:
 
 
 class VeyraNotificationManager:
-    """Forward Veyra events and manage temporary per-camera notification mute."""
+    """Forward Veyra events and manage pocket-safe temporary camera mute."""
 
     def __init__(self, hass: HomeAssistant, entry, runtime) -> None:
         self.hass = hass
@@ -91,11 +91,11 @@ class VeyraNotificationManager:
         self._unsubscribe = None
         self._action_unsubscribe = None
 
-        # Flood tracking is deliberately runtime-only. Temporary mutes are meant to
-        # be short-lived and should never survive a Home Assistant restart.
+        # Runtime-only by design. A temporary mute or "noisy camera" state must
+        # never survive a Home Assistant restart.
         self._camera_alert_times: dict[str, deque[float]] = defaultdict(deque)
         self._camera_muted_until: dict[str, float] = {}
-        self._camera_offer_cooldown_until: dict[str, float] = {}
+        self._camera_noisy_until: dict[str, float] = {}
 
     async def async_start(self) -> None:
         topic = str(
@@ -158,9 +158,10 @@ class VeyraNotificationManager:
             _LOGGER.debug("Veyra notifications temporarily muted for %s", camera)
             return
 
-        sent = await self._send(after, event_id, level)
+        noisy = self._camera_is_noisy(camera)
+        sent = await self._send(after, event_id, level, noisy=noisy)
         if sent:
-            await self._record_alert_and_maybe_offer_mute(camera)
+            self._record_alert(camera)
 
     def _class_level(self, label: str) -> str:
         levels = self.entry.options.get(CONF_CLASS_LEVELS, {})
@@ -203,7 +204,12 @@ class VeyraNotificationManager:
         return f"📹 Wykryto: {label}"
 
     async def _send(
-        self, after: dict[str, Any], event_id: str, level: str
+        self,
+        after: dict[str, Any],
+        event_id: str,
+        level: str,
+        *,
+        noisy: bool,
     ) -> bool:
         targets = self._targets()
         if not targets:
@@ -212,14 +218,23 @@ class VeyraNotificationManager:
 
         camera = str(after.get("camera") or "kamera")
         label = str(after.get("label") or "obiekt")
-        # Current raw detector confidence, not the lifetime max (top_score).
         score = _score_percent(after.get("score", after.get("top_score")))
         title = self._title(label)
         message = self._camera_name(camera)
         if score is not None and score > 0:
             message += f"\n• pewność {score}%"
 
-        data = self._payload(after, event_id, camera, level)
+        if noisy and self._flood_mute_enabled():
+            duration = self._mute_duration_minutes()
+            message += f"\n• dużo zdarzeń — możesz wyciszyć na {duration} min"
+
+        data = self._payload(
+            after,
+            event_id,
+            camera,
+            level,
+            include_mute_action=noisy and self._flood_mute_enabled(),
+        )
         call_data = {"title": title, "message": message, "data": data}
         current_services = self.hass.services.async_services().get("notify", {})
         sent = False
@@ -245,6 +260,8 @@ class VeyraNotificationManager:
         event_id: str,
         camera: str,
         level: str,
+        *,
+        include_mute_action: bool,
     ) -> dict[str, Any]:
         version = _notification_version(after)
         image = (
@@ -256,18 +273,30 @@ class VeyraNotificationManager:
         except (TypeError, ValueError):
             when = 0
 
+        actions: list[dict[str, str]] = [
+            {
+                "action": "URI",
+                "title": "📹 Podgląd kamer",
+                "uri": "/lovelace/monitoring",
+            }
+        ]
+        if include_mute_action:
+            duration = self._mute_duration_minutes()
+            actions.append(
+                {
+                    "action": (
+                        f"VEYRA_MUTE:{self.entry.entry_id}:{camera}:{duration}"
+                    ),
+                    "title": f"🔕 Wycisz {duration} min",
+                }
+            )
+
         data: dict[str, Any] = {
             "image": image,
             "tag": f"veyra_{event_id}",
             "group": f"veyra_{camera}",
             "url": "/lovelace/monitoring",
-            "actions": [
-                {
-                    "action": "URI",
-                    "title": "📹 Podgląd kamer",
-                    "uri": "/lovelace/monitoring",
-                }
-            ],
+            "actions": actions,
         }
         if when > 0:
             data["when"] = when
@@ -331,7 +360,7 @@ class VeyraNotificationManager:
         return data
 
     # ---------------------------------------------------------------------
-    # Smart per-camera mute after a burst of notifications
+    # Pocket-safe per-camera mute
     # ---------------------------------------------------------------------
 
     def _flood_mute_enabled(self) -> bool:
@@ -400,66 +429,44 @@ class VeyraNotificationManager:
             return False
         return True
 
-    async def _record_alert_and_maybe_offer_mute(self, camera: str) -> None:
+    def _camera_is_noisy(self, camera: str) -> bool:
+        if not self._flood_mute_enabled():
+            return False
+        now = time.time()
+        noisy_until = float(self._camera_noisy_until.get(camera, 0.0) or 0.0)
+        if noisy_until <= now:
+            self._camera_noisy_until.pop(camera, None)
+            return False
+        return True
+
+    def _record_alert(self, camera: str) -> None:
         if not self._flood_mute_enabled() or self._camera_is_muted(camera):
             return
 
         now = time.time()
-        window = self._flood_window_seconds()
-        threshold = self._flood_threshold()
         history = self._camera_alert_times[camera]
         history.append(now)
-        cutoff = now - window
+        cutoff = now - self._flood_window_seconds()
         while history and history[0] < cutoff:
             history.popleft()
 
-        if len(history) < threshold:
+        if self._camera_is_noisy(camera):
+            # Keep the mute action available while the camera is actively flooding.
+            self._camera_noisy_until[camera] = (
+                now + DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS
+            )
             return
 
-        cooldown_until = float(
-            self._camera_offer_cooldown_until.get(camera, 0.0) or 0.0
-        )
-        if cooldown_until > now:
-            return
-
-        count = len(history)
-        history.clear()
-        self._camera_offer_cooldown_until[camera] = (
-            now + DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS
-        )
-        await self._send_mute_offer(camera, count, window)
-
-    async def _send_mute_offer(
-        self, camera: str, count: int, window_seconds: int
-    ) -> None:
-        duration = self._mute_duration_minutes()
-        title = f"🔕 Dużo powiadomień · {self._camera_name(camera)}"
-        message = (
-            f"{count} powiadomień w ostatnich {window_seconds} s.\n"
-            f"Wyciszyć tę kamerę na {duration} min?"
-        )
-        mute_action = (
-            f"VEYRA_MUTE:{self.entry.entry_id}:{camera}:{duration}"
-        )
-        keep_action = f"VEYRA_KEEP:{self.entry.entry_id}:{camera}"
-        data: dict[str, Any] = {
-            "tag": f"veyra_mute_offer_{camera}",
-            "group": "veyra_control",
-            "push": {"interruption-level": "active", "sound": "default"},
-            "channel": "Veyra",
-            "importance": "default",
-            "actions": [
-                {
-                    "action": mute_action,
-                    "title": f"🔕 Wycisz {duration} min",
-                },
-                {
-                    "action": keep_action,
-                    "title": "🔔 Zostaw aktywną",
-                },
-            ],
-        }
-        await self._send_to_targets(title, message, data)
+        if len(history) >= self._flood_threshold():
+            self._camera_noisy_until[camera] = (
+                now + DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS
+            )
+            _LOGGER.info(
+                "Veyra camera %s entered noisy notification state (%d alerts in %d s)",
+                camera,
+                len(history),
+                self._flood_window_seconds(),
+            )
 
     async def _notification_action(self, event: Event) -> None:
         action = str((event.data or {}).get("action") or "")
@@ -467,7 +474,6 @@ class VeyraNotificationManager:
             return
 
         mute_prefix = f"VEYRA_MUTE:{self.entry.entry_id}:"
-        keep_prefix = f"VEYRA_KEEP:{self.entry.entry_id}:"
         unmute_prefix = f"VEYRA_UNMUTE:{self.entry.entry_id}:"
 
         if action.startswith(mute_prefix):
@@ -482,7 +488,7 @@ class VeyraNotificationManager:
 
             self._camera_muted_until[camera] = time.time() + (minutes * 60)
             self._camera_alert_times.pop(camera, None)
-            self._camera_offer_cooldown_until[camera] = self._camera_muted_until[camera]
+            self._camera_noisy_until.pop(camera, None)
             _LOGGER.info(
                 "Veyra notifications muted for %s for %d minutes",
                 camera,
@@ -491,28 +497,13 @@ class VeyraNotificationManager:
             await self._send_mute_confirmation(camera, minutes)
             return
 
-        if action.startswith(keep_prefix):
-            camera = action[len(keep_prefix) :]
-            if not camera:
-                return
-            self._camera_alert_times.pop(camera, None)
-            self._camera_offer_cooldown_until[camera] = (
-                time.time() + DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS
-            )
-            _LOGGER.info(
-                "Veyra notification mute offer declined for %s", camera
-            )
-            return
-
         if action.startswith(unmute_prefix):
             camera = action[len(unmute_prefix) :]
             if not camera:
                 return
             self._camera_muted_until.pop(camera, None)
             self._camera_alert_times.pop(camera, None)
-            self._camera_offer_cooldown_until[camera] = (
-                time.time() + DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS
-            )
+            self._camera_noisy_until.pop(camera, None)
             _LOGGER.info("Veyra notifications manually unmuted for %s", camera)
             await self._send_unmute_confirmation(camera)
 

@@ -21,8 +21,10 @@ from homeassistant.helpers.selector import (
 
 from .api import VeyraApi, VeyraApiError
 from .const import (
+    CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
     CONF_NOTIFICATION_UPDATE_SECONDS,
     CONF_NOTIFY_TARGETS,
+    DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
     DEFAULT_NOTIFICATION_UPDATE_SECONDS,
     DEFAULT_PORT,
     DOMAIN,
@@ -73,28 +75,36 @@ class VeyraOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             options = dict(self.config_entry.options)
-            if CONF_NOTIFY_TARGETS in user_input:
-                options[CONF_NOTIFY_TARGETS] = list(user_input[CONF_NOTIFY_TARGETS])
+            options[CONF_NOTIFY_TARGETS] = list(user_input.get(CONF_NOTIFY_TARGETS, []))
             options[CONF_NOTIFICATION_UPDATE_SECONDS] = float(
                 user_input[CONF_NOTIFICATION_UPDATE_SECONDS]
+            )
+            options[CONF_NOTIFICATION_ALERT_REPEAT_SECONDS] = float(
+                user_input[CONF_NOTIFICATION_ALERT_REPEAT_SECONDS]
             )
             return self.async_create_entry(data=options)
 
         services = self.hass.services.async_services().get("notify", {})
         mobile = sorted(str(name) for name in services if str(name).startswith("mobile_app_"))
-        current_targets = list(self.config_entry.options.get(CONF_NOTIFY_TARGETS, []) or [])
+        if CONF_NOTIFY_TARGETS in self.config_entry.options:
+            current_targets = list(self.config_entry.options.get(CONF_NOTIFY_TARGETS, []) or [])
+        else:
+            current_targets = list(mobile)
 
         fields: dict[Any, Any] = {}
         if mobile:
             selector_options = [
-                SelectOptionDict(value=name, label=name.replace("mobile_app_", "").replace("_", " ").title())
+                SelectOptionDict(
+                    value=name,
+                    label=name.replace("mobile_app_", "").replace("_", " ").title(),
+                )
                 for name in mobile
             ]
             fields[vol.Optional(CONF_NOTIFY_TARGETS, default=current_targets)] = SelectSelector(
                 SelectSelectorConfig(
                     options=selector_options,
                     multiple=True,
-                    mode=SelectSelectorMode.DROPDOWN,
+                    mode=SelectSelectorMode.LIST,
                 )
             )
 
@@ -113,6 +123,26 @@ class VeyraOptionsFlow(OptionsFlow):
                 min=0.5,
                 max=30.0,
                 step=0.5,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="s",
+            )
+        )
+
+        fields[
+            vol.Required(
+                CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
+                default=float(
+                    self.config_entry.options.get(
+                        CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
+                        DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
+                    )
+                ),
+            )
+        ] = NumberSelector(
+            NumberSelectorConfig(
+                min=0.0,
+                max=60.0,
+                step=1.0,
                 mode=NumberSelectorMode.BOX,
                 unit_of_measurement="s",
             )

@@ -1,1 +1,0 @@
-icon.png and logo.png are Veyra brand assets.

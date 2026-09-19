@@ -75,10 +75,6 @@ class VeyraCamera(Camera):
     _attr_is_on = True
 
     def __init__(self, runtime, camera_id: str, stream: str, camera_name: str) -> None:
-        # Keep the camera platform intentionally simple. Do not inherit from
-        # CoordinatorEntity/VeyraEntity: Camera has its own lifecycle and stream
-        # state and multiple inheritance caused only the first camera entity to
-        # survive registration on some HA versions.
         Camera.__init__(self)
 
         self.runtime = runtime
@@ -87,8 +83,6 @@ class VeyraCamera(Camera):
         self.camera_name = str(camera_name or camera_id.replace("_", " ").title())
         self.instance_id = str(runtime.info.get("instance_id") or "veyra")
 
-        # Keep the already-introduced stable ID so an existing Kamera 201 entity
-        # is reused while the missing camera entities are added.
         self._attr_unique_id = f"{self.instance_id}:{self.camera_id}:live"
         self._attr_name = f"{self.camera_name} Podgląd"
         self._attr_has_entity_name = False
@@ -97,7 +91,6 @@ class VeyraCamera(Camera):
             name=self.camera_name,
             manufacturer="Veyra",
             model="Veyra Camera",
-            via_device=(DOMAIN, self.instance_id),
             configuration_url=f"{self.runtime.api.base_url}/camera/{self.camera_id}",
         )
 
@@ -128,8 +121,6 @@ class VeyraCamera(Camera):
 
     @property
     def available(self) -> bool:
-        # Availability of the Veyra service is enough to keep each camera entity
-        # present. A temporarily unavailable stream/snapshot must not remove it.
         return bool(self.runtime.coordinator.last_update_success)
 
     @property
@@ -138,7 +129,6 @@ class VeyraCamera(Camera):
 
     @property
     def use_stream_for_stills(self) -> bool:
-        # Always use the per-camera Veyra snapshot endpoint for the entity picture.
         return False
 
     @property

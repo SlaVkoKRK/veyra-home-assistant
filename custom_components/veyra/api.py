@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -66,40 +67,41 @@ class VeyraApi:
             json={"feature": feature, "enabled": bool(enabled)},
         )
 
-    async def async_camera_image(self, camera: str) -> bytes | None:
+    async def _image(self, path: str, error_name: str) -> bytes | None:
         try:
             async with self.session.get(
-                self.base_url + f"/api/ha/v1/cameras/{camera}/snapshot.jpg",
+                self.base_url + path,
                 timeout=ClientTimeout(total=6),
             ) as resp:
                 if resp.status == 404:
                     return None
                 if resp.status >= 400:
-                    raise VeyraApiError(f"Snapshot HTTP {resp.status}")
+                    raise VeyraApiError(f"{error_name} HTTP {resp.status}")
                 return await resp.read()
         except VeyraApiError:
             raise
         except (ClientError, TimeoutError, OSError) as err:
             raise VeyraConnectionError(str(err)) from err
+
+    async def async_camera_image(self, camera: str) -> bytes | None:
+        return await self._image(
+            f"/api/ha/v1/cameras/{quote(str(camera), safe='')}/snapshot.jpg",
+            "Snapshot",
+        )
 
     async def async_event_thumbnail(self, event_id: str) -> bytes | None:
-        from urllib.parse import quote
-
         safe_id = quote(str(event_id), safe="")
-        try:
-            async with self.session.get(
-                self.base_url + f"/api/ainvr/notifications/{safe_id}/thumbnail.jpg",
-                timeout=ClientTimeout(total=6),
-            ) as resp:
-                if resp.status == 404:
-                    return None
-                if resp.status >= 400:
-                    raise VeyraApiError(f"Event thumbnail HTTP {resp.status}")
-                return await resp.read()
-        except VeyraApiError:
-            raise
-        except (ClientError, TimeoutError, OSError) as err:
-            raise VeyraConnectionError(str(err)) from err
+        return await self._image(
+            f"/api/ainvr/notifications/{safe_id}/thumbnail.jpg",
+            "Event thumbnail",
+        )
+
+    async def async_event_current_image(self, event_id: str) -> bytes | None:
+        safe_id = quote(str(event_id), safe="")
+        return await self._image(
+            f"/api/ainvr/notifications/{safe_id}/current.jpg",
+            "Current notification frame",
+        )
 
     def rtsp_url(self, stream: str) -> str:
         port = int(((self.info_data.get("go2rtc") or {}).get("rtsp_port") or 8554))

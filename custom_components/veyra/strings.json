@@ -27,10 +27,11 @@
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz telefony z aplikacją Home Assistant. Brak wyboru oznacza wszystkie dostępne usługi notify.mobile_app_*. Poziom alarmu dla każdej klasy ustawiasz encjami konfiguracji Veyra.",
+        "description": "Wybierz urządzenia z aplikacją Home Assistant, które mają otrzymywać powiadomienia. Wszystkie wykryte urządzenia są domyślnie zaznaczone; możesz każde zaznaczyć lub odznaczyć.",
         "data": {
-          "notify_targets": "Urządzenia mobilne",
-          "notification_update_seconds": "Minimalny odstęp aktualizacji powiadomienia"
+          "notify_targets": "Urządzenia otrzymujące powiadomienia",
+          "notification_update_seconds": "Minimalny odstęp aktualizacji zdjęcia",
+          "notification_alert_repeat_seconds": "Ponowienie wibracji / dźwięku podczas trwającego zdarzenia (0 = wyłączone)"
         }
       }
     }

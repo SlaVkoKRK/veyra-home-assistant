@@ -10,6 +10,15 @@ from .entity import VeyraEntity
 
 PARALLEL_UPDATES = 0
 
+LEVEL_TO_PL = {
+    "off": "Wyłączone",
+    "silent": "Ciche",
+    "normal": "Normalne",
+    "urgent": "Pilne",
+    "critical": "Krytyczne",
+}
+PL_TO_LEVEL = {value: key for key, value in LEVEL_TO_PL.items()}
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     runtime = entry.runtime_data
@@ -29,7 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class VeyraClassNotificationSelect(VeyraEntity, SelectEntity):
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:bell-cog-outline"
-    _attr_options = list(NOTIFICATION_LEVELS)
+    _attr_options = [LEVEL_TO_PL[level] for level in NOTIFICATION_LEVELS]
 
     def __init__(self, runtime, entry: ConfigEntry, label: str, class_id) -> None:
         super().__init__(runtime)
@@ -46,15 +55,16 @@ class VeyraClassNotificationSelect(VeyraEntity, SelectEntity):
         if isinstance(levels, dict) and self.label in levels:
             value = str(levels[self.label])
             if value in NOTIFICATION_LEVELS:
-                return value
-        return default_class_level(self.label)
+                return LEVEL_TO_PL[value]
+        return LEVEL_TO_PL[default_class_level(self.label)]
 
     async def async_select_option(self, option: str) -> None:
-        if option not in NOTIFICATION_LEVELS:
+        internal = PL_TO_LEVEL.get(option)
+        if internal not in NOTIFICATION_LEVELS:
             return
         options = dict(self.entry.options)
         levels = dict(options.get(CONF_CLASS_LEVELS, {}) or {})
-        levels[self.label] = option
+        levels[self.label] = internal
         options[CONF_CLASS_LEVELS] = levels
         self.hass.config_entries.async_update_entry(self.entry, options=options)
         self.async_write_ha_state()

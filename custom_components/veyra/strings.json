@@ -27,9 +27,19 @@
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz urządzenia z aplikacją Home Assistant, które mają otrzymywać powiadomienia. Każdy event new/update opublikowany przez Veyra jest wysyłany od razu, tak jak w automatyzacji MQTT.",
+        "description": "Wybierz urządzenia z aplikacją Home Assistant. Veyra może też wykrywać serię alertów z jednej kamery i zaproponować tymczasowe wyciszenie tylko jej powiadomień.",
         "data": {
-          "notify_targets": "Urządzenia otrzymujące powiadomienia"
+          "notify_targets": "Urządzenia otrzymujące powiadomienia",
+          "flood_mute_enabled": "Pytaj o wyciszenie przy serii powiadomień",
+          "flood_mute_threshold": "Liczba powiadomień przed pytaniem",
+          "flood_mute_window_seconds": "Okno zliczania powiadomień",
+          "flood_mute_duration_minutes": "Czas wyciszenia kamery"
+        },
+        "data_description": {
+          "flood_mute_enabled": "Działa osobno dla każdej kamery i nie wyłącza detekcji ani zapisu eventów.",
+          "flood_mute_threshold": "Domyślnie 12. Pytanie pojawi się dopiero po tylu pushach z jednej kamery w wybranym oknie czasu.",
+          "flood_mute_window_seconds": "Domyślnie 90 s.",
+          "flood_mute_duration_minutes": "Po tym czasie powiadomienia z wyciszonej kamery włączą się automatycznie."
         }
       }
     }

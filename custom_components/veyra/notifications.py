@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from typing import Any
 
 from aiohttp import web
@@ -14,11 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from .api import VeyraApiError
 from .const import (
     CONF_CLASS_LEVELS,
-    CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
-    CONF_NOTIFICATION_UPDATE_SECONDS,
     CONF_NOTIFY_TARGETS,
-    DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
-    DEFAULT_NOTIFICATION_UPDATE_SECONDS,
     LEVEL_CRITICAL,
     LEVEL_NORMAL,
     LEVEL_OFF,
@@ -60,25 +55,14 @@ def _score_percent(value: Any) -> int | None:
         return None
 
 
-def _snapshot_version(after: dict[str, Any]) -> int:
-    snap = after.get("snapshot") or {}
-    if isinstance(snap, dict):
-        try:
-            return int(snap.get("version") or 0)
-        except (TypeError, ValueError):
-            return 0
-    return 0
-
-
 class VeyraNotificationManager:
-    """Translate Veyra MQTT events into native Companion App notifications."""
+    """Forward every Veyra new/update MQTT event to Companion devices."""
 
     def __init__(self, hass: HomeAssistant, entry, runtime) -> None:
         self.hass = hass
         self.entry = entry
         self.runtime = runtime
         self._unsubscribe = None
-        self._events: dict[str, dict[str, Any]] = {}
 
     async def async_start(self) -> None:
         topic = str((((self.runtime.info or {}).get("mqtt") or {}).get("events_topic") or "ainvr/events"))
@@ -95,7 +79,6 @@ class VeyraNotificationManager:
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
-        self._events.clear()
 
     async def _mqtt_message(self, msg) -> None:
         try:
@@ -107,15 +90,14 @@ class VeyraNotificationManager:
             return
 
         event_type = str(payload.get("type") or "update")
+        if event_type not in {"new", "update"}:
+            return
+
         after = payload.get("after") or {}
         if not isinstance(after, dict):
             return
         event_id = str(after.get("id") or "")
         if not event_id:
-            return
-
-        if event_type == "end":
-            self._events.pop(event_id, None)
             return
         if bool(after.get("false_positive", False)):
             return
@@ -127,52 +109,9 @@ class VeyraNotificationManager:
         if level == LEVEL_OFF:
             return
 
-        seq = int(after.get("update_seq") or 0)
-        state = self._events.setdefault(
-            event_id,
-            {"first_sent": False, "last_push": 0.0, "last_alert": 0.0, "last_seq": -1},
-        )
-        if seq <= int(state.get("last_seq", -1)) and event_type != "new":
-            return
-
-        now = time.monotonic()
-        first = not bool(state.get("first_sent"))
-        if not first:
-            min_interval = float(
-                self.entry.options.get(
-                    CONF_NOTIFICATION_UPDATE_SECONDS, DEFAULT_NOTIFICATION_UPDATE_SECONDS
-                )
-            )
-            if (now - float(state.get("last_push", 0.0))) < max(0.5, min_interval):
-                state["last_seq"] = max(seq, int(state.get("last_seq", -1)))
-                return
-
-        alert_repeat = float(
-            self.entry.options.get(
-                CONF_NOTIFICATION_ALERT_REPEAT_SECONDS,
-                DEFAULT_NOTIFICATION_ALERT_REPEAT_SECONDS,
-            )
-        )
-        repeat_alert = (
-            not first
-            and level not in {LEVEL_OFF, LEVEL_SILENT}
-            and alert_repeat > 0
-            and (now - float(state.get("last_alert", 0.0))) >= alert_repeat
-        )
-
-        if first:
-            send_level = level
-        elif repeat_alert:
-            send_level = LEVEL_URGENT if level in {LEVEL_URGENT, LEVEL_CRITICAL} else LEVEL_NORMAL
-        else:
-            send_level = LEVEL_SILENT
-
-        await self._send(after, event_id, send_level, first=first, repeat_alert=repeat_alert)
-        state["first_sent"] = True
-        state["last_push"] = now
-        if first or repeat_alert:
-            state["last_alert"] = now
-        state["last_seq"] = seq
+        # Deliberately mirror the proven user automation: every Veyra new/update
+        # becomes a push. Veyra controls event/update frequency, not this layer.
+        await self._send(after, event_id, level)
 
     def _class_level(self, label: str) -> str:
         levels = self.entry.options.get(CONF_CLASS_LEVELS, {})
@@ -208,15 +147,7 @@ class VeyraNotificationManager:
             return f"{emoji} {text}"
         return f"📹 Wykryto: {label}"
 
-    async def _send(
-        self,
-        after: dict[str, Any],
-        event_id: str,
-        level: str,
-        *,
-        first: bool,
-        repeat_alert: bool,
-    ) -> None:
+    async def _send(self, after: dict[str, Any], event_id: str, level: str) -> None:
         targets = self._targets()
         if not targets:
             _LOGGER.debug("No selected mobile_app notify targets available for Veyra")
@@ -230,7 +161,7 @@ class VeyraNotificationManager:
         if score is not None and score > 0:
             message += f"\n• pewność {score}%"
 
-        data = self._payload(after, event_id, camera, level, first=first, repeat_alert=repeat_alert)
+        data = self._payload(after, event_id, camera, level)
         call_data = {"title": title, "message": message, "data": data}
         current_services = self.hass.services.async_services().get("notify", {})
         for service in targets:
@@ -247,12 +178,9 @@ class VeyraNotificationManager:
         event_id: str,
         camera: str,
         level: str,
-        *,
-        first: bool,
-        repeat_alert: bool,
     ) -> dict[str, Any]:
-        version = _snapshot_version(after)
-        image = f"/api/veyra/notifications/{self.entry.entry_id}/{event_id}/thumbnail.jpg?v={version}"
+        # Restore the exact image transport that worked in 0.2.0.
+        image = f"/api/veyra/notifications/{self.entry.entry_id}/{event_id}/thumbnail.jpg"
         try:
             when = int(float(after.get("start_time") or 0))
         except (TypeError, ValueError):
@@ -260,7 +188,8 @@ class VeyraNotificationManager:
 
         data: dict[str, Any] = {
             "image": image,
-            "tag": event_id,
+            "tag": f"veyra_{event_id}",
+            "group": f"veyra_{camera}",
             "url": "/lovelace/monitoring",
             "actions": [
                 {
@@ -277,7 +206,7 @@ class VeyraNotificationManager:
             data.update(
                 {
                     "push": {"interruption-level": "passive"},
-                    "channel": "Veyra Ciche aktualizacje",
+                    "channel": "Veyra Ciche",
                     "importance": "low",
                     "alert_once": True,
                 }
@@ -286,9 +215,9 @@ class VeyraNotificationManager:
             data.update(
                 {
                     "push": {"interruption-level": "active", "sound": "default"},
-                    "channel": "Veyra Aktualizacje" if repeat_alert else "Veyra",
-                    "importance": "high" if repeat_alert else "default",
-                    "vibrationPattern": "100, 450, 100, 450" if repeat_alert else "100, 250",
+                    "channel": "Veyra",
+                    "importance": "default",
+                    "vibrationPattern": "100, 250",
                     "alert_once": False,
                 }
             )
@@ -298,14 +227,13 @@ class VeyraNotificationManager:
                     "ttl": 0,
                     "priority": "high",
                     "push": {"interruption-level": "time-sensitive", "sound": "default"},
-                    "channel": "Veyra Aktualizacje" if repeat_alert else "Veyra Security",
+                    "channel": "Veyra Security",
                     "importance": "high",
-                    "vibrationPattern": "100, 500, 100, 500, 100" if repeat_alert else "100, 700, 100",
+                    "vibrationPattern": "100, 700, 100",
                     "alert_once": False,
                 }
             )
         elif level == LEVEL_CRITICAL:
-            data.pop("tag", None)
             data.update(
                 {
                     "ttl": 0,
@@ -342,5 +270,9 @@ class VeyraThumbnailView(HomeAssistantView):
         return web.Response(
             body=image,
             content_type="image/jpeg",
-            headers={"Cache-Control": "no-store, max-age=0"},
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )

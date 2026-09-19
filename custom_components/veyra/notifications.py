@@ -55,6 +55,21 @@ def _score_percent(value: Any) -> int | None:
         return None
 
 
+def _notification_version(after: dict[str, Any]) -> int:
+    current = after.get("notification") or {}
+    if isinstance(current, dict):
+        try:
+            version = int(current.get("version") or 0)
+            if version > 0:
+                return version
+        except (TypeError, ValueError):
+            pass
+    try:
+        return int(after.get("update_seq") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 class VeyraNotificationManager:
     """Forward every Veyra new/update MQTT event to Companion devices."""
 
@@ -109,8 +124,6 @@ class VeyraNotificationManager:
         if level == LEVEL_OFF:
             return
 
-        # Deliberately mirror the proven user automation: every Veyra new/update
-        # becomes a push. Veyra controls event/update frequency, not this layer.
         await self._send(after, event_id, level)
 
     def _class_level(self, label: str) -> str:
@@ -155,7 +168,8 @@ class VeyraNotificationManager:
 
         camera = str(after.get("camera") or "kamera")
         label = str(after.get("label") or "obiekt")
-        score = _score_percent(after.get("top_score", after.get("score")))
+        # Current raw detector confidence, not the lifetime max (top_score).
+        score = _score_percent(after.get("score", after.get("top_score")))
         title = self._title(label)
         message = self._camera_name(camera)
         if score is not None and score > 0:
@@ -172,15 +186,12 @@ class VeyraNotificationManager:
             except HomeAssistantError as err:
                 _LOGGER.warning("Unable to send Veyra notification via notify.%s: %s", service, err)
 
-    def _payload(
-        self,
-        after: dict[str, Any],
-        event_id: str,
-        camera: str,
-        level: str,
-    ) -> dict[str, Any]:
-        # Restore the exact image transport that worked in 0.2.0.
-        image = f"/api/veyra/notifications/{self.entry.entry_id}/{event_id}/thumbnail.jpg"
+    def _payload(self, after: dict[str, Any], event_id: str, camera: str, level: str) -> dict[str, Any]:
+        version = _notification_version(after)
+        image = (
+            f"/api/veyra/notifications/{self.entry.entry_id}/{event_id}/"
+            f"{version}/current.jpg"
+        )
         try:
             when = int(float(after.get("start_time") or 0))
         except (TypeError, ValueError):
@@ -203,51 +214,43 @@ class VeyraNotificationManager:
             data["when"] = when
 
         if level == LEVEL_SILENT:
-            data.update(
-                {
-                    "push": {"interruption-level": "passive"},
-                    "channel": "Veyra Ciche",
-                    "importance": "low",
-                    "alert_once": True,
-                }
-            )
+            data.update({
+                "push": {"interruption-level": "passive"},
+                "channel": "Veyra Ciche",
+                "importance": "low",
+                "alert_once": True,
+            })
         elif level == LEVEL_NORMAL:
-            data.update(
-                {
-                    "push": {"interruption-level": "active", "sound": "default"},
-                    "channel": "Veyra",
-                    "importance": "default",
-                    "vibrationPattern": "100, 250",
-                    "alert_once": False,
-                }
-            )
+            data.update({
+                "push": {"interruption-level": "active", "sound": "default"},
+                "channel": "Veyra",
+                "importance": "default",
+                "vibrationPattern": "100, 250",
+                "alert_once": False,
+            })
         elif level == LEVEL_URGENT:
-            data.update(
-                {
-                    "ttl": 0,
-                    "priority": "high",
-                    "push": {"interruption-level": "time-sensitive", "sound": "default"},
-                    "channel": "Veyra Security",
-                    "importance": "high",
-                    "vibrationPattern": "100, 700, 100",
-                    "alert_once": False,
-                }
-            )
+            data.update({
+                "ttl": 0,
+                "priority": "high",
+                "push": {"interruption-level": "time-sensitive", "sound": "default"},
+                "channel": "Veyra Security",
+                "importance": "high",
+                "vibrationPattern": "100, 700, 100",
+                "alert_once": False,
+            })
         elif level == LEVEL_CRITICAL:
-            data.update(
-                {
-                    "ttl": 0,
-                    "priority": "high",
-                    "push": {
-                        "interruption-level": "critical",
-                        "sound": {"name": "default", "critical": 1, "volume": 1.0},
-                    },
-                    "channel": "alarm_stream",
-                    "importance": "max",
-                    "vibrationPattern": "100, 900, 100, 900, 100",
-                    "alert_once": False,
-                }
-            )
+            data.update({
+                "ttl": 0,
+                "priority": "high",
+                "push": {
+                    "interruption-level": "critical",
+                    "sound": {"name": "default", "critical": 1, "volume": 1.0},
+                },
+                "channel": "alarm_stream",
+                "importance": "max",
+                "vibrationPattern": "100, 900, 100, 900, 100",
+                "alert_once": False,
+            })
         return data
 
 
@@ -263,6 +266,33 @@ class VeyraThumbnailView(HomeAssistantView):
             raise web.HTTPNotFound()
         try:
             image = await entry.runtime_data.api.async_event_thumbnail(event_id)
+        except VeyraApiError:
+            raise web.HTTPNotFound() from None
+        if not image:
+            raise web.HTTPNotFound()
+        return web.Response(body=image, content_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+class VeyraCurrentNotificationView(HomeAssistantView):
+    # Version is deliberately part of the path. iOS/Companion cannot reuse the
+    # previous attachment URL when a Veyra event is updated.
+    url = "/api/veyra/notifications/{entry_id}/{event_id}/{version}/current.jpg"
+    name = "api:veyra:notifications:current"
+    requires_auth = True
+
+    async def get(
+        self,
+        request: web.Request,
+        entry_id: str,
+        event_id: str,
+        version: str,
+    ) -> web.Response:
+        hass: HomeAssistant = request.app[KEY_HASS]
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or getattr(entry, "runtime_data", None) is None:
+            raise web.HTTPNotFound()
+        try:
+            image = await entry.runtime_data.api.async_event_current_image(event_id)
         except VeyraApiError:
             raise web.HTTPNotFound() from None
         if not image:

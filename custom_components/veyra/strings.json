@@ -27,17 +27,17 @@
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz urządzenia z aplikacją Home Assistant. Veyra może też wykrywać serię alertów z jednej kamery i zaproponować tymczasowe wyciszenie tylko jej powiadomień.",
+        "description": "Wybierz urządzenia z aplikacją Home Assistant. Każdy event new/update jest wysyłany od razu. Gdy jedna kamera generuje serię alertów, Veyra nadal normalnie alarmuje, ale do kolejnych powiadomień dodaje przycisk tymczasowego wyciszenia tej kamery.",
         "data": {
           "notify_targets": "Urządzenia otrzymujące powiadomienia",
-          "flood_mute_enabled": "Pytaj o wyciszenie przy serii powiadomień",
-          "flood_mute_threshold": "Liczba powiadomień przed pytaniem",
+          "flood_mute_enabled": "Pokazuj przycisk wyciszenia przy serii powiadomień",
+          "flood_mute_threshold": "Liczba powiadomień przed pokazaniem przycisku",
           "flood_mute_window_seconds": "Okno zliczania powiadomień",
           "flood_mute_duration_minutes": "Czas wyciszenia kamery"
         },
         "data_description": {
-          "flood_mute_enabled": "Działa osobno dla każdej kamery i nie wyłącza detekcji ani zapisu eventów.",
-          "flood_mute_threshold": "Domyślnie 12. Pytanie pojawi się dopiero po tylu pushach z jednej kamery w wybranym oknie czasu.",
+          "flood_mute_enabled": "Nie wysyła osobnego pytania. Telefon nadal dzwoni/wibruje; po przekroczeniu progu przycisk wyciszenia pojawia się w zwykłych alertach tej kamery.",
+          "flood_mute_threshold": "Domyślnie 12. Po tylu pushach z jednej kamery w wybranym oknie czasu kolejne alerty dostaną przycisk wyciszenia.",
           "flood_mute_window_seconds": "Domyślnie 90 s.",
           "flood_mute_duration_minutes": "Po tym czasie powiadomienia z wyciszonej kamery włączą się automatycznie."
         }
@@ -46,26 +46,54 @@
   },
   "entity": {
     "camera": {
-      "live_view": {"name": "Podgląd"}
+      "live_view": {
+        "name": "Podgląd"
+      }
     },
     "switch": {
-      "ai_detection": {"name": "AI Detection"},
-      "notifications": {"name": "Powiadomienia"},
-      "snapshots": {"name": "Snapshoty"}
+      "ai_detection": {
+        "name": "AI Detection"
+      },
+      "notifications": {
+        "name": "Powiadomienia"
+      },
+      "snapshots": {
+        "name": "Snapshoty"
+      }
     },
     "binary_sensor": {
-      "motion": {"name": "Ruch"},
-      "objects": {"name": "Obiekt"},
-      "night": {"name": "Tryb nocny"},
-      "online": {"name": "Połączenie"}
+      "motion": {
+        "name": "Ruch"
+      },
+      "objects": {
+        "name": "Obiekt"
+      },
+      "night": {
+        "name": "Tryb nocny"
+      },
+      "online": {
+        "name": "Połączenie"
+      }
     },
     "sensor": {
-      "cpu_usage": {"name": "CPU"},
-      "igpu_usage": {"name": "Intel GPU"},
-      "coral_latency": {"name": "Coral latency"},
-      "fps": {"name": "FPS"},
-      "active_objects": {"name": "Aktywne obiekty"},
-      "detector_latency": {"name": "Detector latency"}
+      "cpu_usage": {
+        "name": "CPU"
+      },
+      "igpu_usage": {
+        "name": "Intel GPU"
+      },
+      "coral_latency": {
+        "name": "Coral latency"
+      },
+      "fps": {
+        "name": "FPS"
+      },
+      "active_objects": {
+        "name": "Aktywne obiekty"
+      },
+      "detector_latency": {
+        "name": "Detector latency"
+      }
     }
   }
 }

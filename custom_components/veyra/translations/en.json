@@ -23,9 +23,19 @@
     "step": {
       "init": {
         "title": "Veyra notifications",
-        "description": "Select Home Assistant Companion devices that should receive Veyra notifications. Every new/update event published by Veyra is forwarded immediately, like the MQTT automation.",
+        "description": "Select Home Assistant Companion devices. Every Veyra new/update event is forwarded immediately. The integration can also detect a burst of alerts from one camera and offer to mute only that camera temporarily.",
         "data": {
-          "notify_targets": "Notification devices"
+          "notify_targets": "Notification devices",
+          "flood_mute_enabled": "Offer camera mute after a notification burst",
+          "flood_mute_threshold": "Notifications before asking",
+          "flood_mute_window_seconds": "Notification counting window",
+          "flood_mute_duration_minutes": "Camera mute duration"
+        },
+        "data_description": {
+          "flood_mute_enabled": "Works independently per camera and does not disable detection or events.",
+          "flood_mute_threshold": "Default 12. The prompt appears only after this many pushes from the same camera within the selected time window.",
+          "flood_mute_window_seconds": "Default 90 seconds.",
+          "flood_mute_duration_minutes": "Notifications for the muted camera automatically resume after this time."
         }
       }
     }

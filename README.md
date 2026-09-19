@@ -34,6 +34,19 @@ Poziomy klas są po polsku: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyc
 
 **Veyra → Konfiguruj** pokazuje wszystkie wykryte `notify.mobile_app_*`. Każde urządzenie można globalnie zaznaczyć lub odznaczyć. Pusta lista oznacza brak wysyłki.
 
+## Inteligentne wyciszenie kamery — 0.2.7
+
+Integracja zlicza wysłane push osobno dla każdej kamery. Domyślnie, gdy jedna kamera wygeneruje **12 powiadomień w 90 sekund**, Home Assistant wysyła pytanie:
+
+- **🔕 Wycisz 15 min** — wycisza wyłącznie push z tej kamery,
+- **🔔 Zostaw aktywną** — alerty lecą dalej.
+
+Próg, okno zliczania oraz czas wyciszenia są ustawiane globalnie w **Veyra → Konfiguruj**. Dostępne czasy wyciszenia: `10 / 15 / 20 / 30 min`.
+
+Wyciszenie nie zatrzymuje detekcji, MQTT, eventów, snapshotów ani encji Home Assistant. Po czasie powiadomienia włączają się automatycznie. Po wyciszeniu integracja wysyła ciche potwierdzenie z akcją **🔔 Włącz teraz**, która natychmiast cofa mute.
+
+Pytanie o wyciszenie ma per-kamera cooldown 15 minut, więc wybranie **Zostaw aktywną** nie powoduje ponownego pytania po kolejnych kilku alertach. Tymczasowe mute jest stanem runtime i nie jest zachowywane po restarcie Home Assistant.
+
 ## Bieżący obraz i pewność — 0.2.4 / Veyra 0.8.3
 
 `top_score` w Veyra jest historycznym maksimum tracka i nie jest bieżącą pewnością. Integracja 0.2.4 pokazuje w powiadomieniu `after.score`, czyli aktualny wynik ostatniego realnego trafienia detektora.

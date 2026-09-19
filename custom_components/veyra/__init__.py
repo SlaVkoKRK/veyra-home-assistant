@@ -11,7 +11,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import VeyraApi, VeyraApiError
 from .const import DOMAIN, PLATFORMS
 from .coordinator import VeyraCoordinator
-from .notifications import VeyraNotificationManager, VeyraThumbnailView
+from .notifications import (
+    VeyraCurrentNotificationView,
+    VeyraNotificationManager,
+    VeyraThumbnailView,
+)
 
 
 @dataclass
@@ -35,9 +39,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = runtime
 
     domain_data = hass.data.setdefault(DOMAIN, {})
-    if not domain_data.get("thumbnail_view_registered"):
+    if not domain_data.get("notification_views_registered"):
         hass.http.register_view(VeyraThumbnailView)
-        domain_data["thumbnail_view_registered"] = True
+        hass.http.register_view(VeyraCurrentNotificationView)
+        domain_data["notification_views_registered"] = True
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

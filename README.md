@@ -34,18 +34,20 @@ Poziomy klas są po polsku: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyc
 
 **Veyra → Konfiguruj** pokazuje wszystkie wykryte `notify.mobile_app_*`. Każde urządzenie można globalnie zaznaczyć lub odznaczyć. Pusta lista oznacza brak wysyłki.
 
-## Inteligentne wyciszenie kamery — 0.2.7
+## Pocket-safe wyciszenie kamery — 0.2.8
 
-Integracja zlicza wysłane push osobno dla każdej kamery. Domyślnie, gdy jedna kamera wygeneruje **12 powiadomień w 90 sekund**, Home Assistant wysyła pytanie:
+Integracja zlicza wysłane alerty osobno dla każdej kamery. Domyślnie, gdy jedna kamera wygeneruje **12 powiadomień w 90 sekund**, nie pojawia się żadne dodatkowe pytanie ani osobny push. Veyra nadal normalnie wysyła kolejne alarmy z dźwiękiem/wibracją, ale do kolejnych powiadomień tej kamery dodaje:
 
-- **🔕 Wycisz 15 min** — wycisza wyłącznie push z tej kamery,
-- **🔔 Zostaw aktywną** — alerty lecą dalej.
+- dopisek **„dużo zdarzeń — możesz wyciszyć na 15 min”**,
+- przycisk **🔕 Wycisz 15 min**.
+
+Dzięki temu telefon pozostawiony w kieszeni nadal alarmuje bez przerwy. Gdy użytkownik spojrzy na zwykłe powiadomienie, może jednym kliknięciem wyciszyć tylko tę konkretną kamerę.
 
 Próg, okno zliczania oraz czas wyciszenia są ustawiane globalnie w **Veyra → Konfiguruj**. Dostępne czasy wyciszenia: `10 / 15 / 20 / 30 min`.
 
 Wyciszenie nie zatrzymuje detekcji, MQTT, eventów, snapshotów ani encji Home Assistant. Po czasie powiadomienia włączają się automatycznie. Po wyciszeniu integracja wysyła ciche potwierdzenie z akcją **🔔 Włącz teraz**, która natychmiast cofa mute.
 
-Pytanie o wyciszenie ma per-kamera cooldown 15 minut, więc wybranie **Zostaw aktywną** nie powoduje ponownego pytania po kolejnych kilku alertach. Tymczasowe mute jest stanem runtime i nie jest zachowywane po restarcie Home Assistant.
+Stan „dużo alertów” utrzymuje przycisk wyciszenia przez 15 minut od ostatniego alertu i jest przedłużany przez kolejne alarmy. Tymczasowe mute oraz stan flood są stanem runtime i nie są zachowywane po restarcie Home Assistant.
 
 ## Bieżący obraz i pewność — 0.2.4 / Veyra 0.8.3
 

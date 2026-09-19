@@ -26,16 +26,29 @@ class VeyraEntity(CoordinatorEntity):
                 sw_version=str(self.runtime.info.get("version") or "unknown"),
                 configuration_url=self.runtime.api.base_url,
             )
-        info = next((x for x in self.runtime.info.get("cameras", []) if x.get("id") == self.camera), {})
+
+        info = next(
+            (
+                item
+                for item in self.runtime.info.get("cameras", [])
+                if isinstance(item, dict) and item.get("id") == self.camera
+            ),
+            {},
+        )
         return DeviceInfo(
             identifiers={(DOMAIN, f"{self.instance_id}:{self.camera}")},
             name=str(info.get("name") or self.camera.replace("_", " ").title()),
             manufacturer="Veyra",
             model="Veyra Camera",
-            via_device=(DOMAIN, self.instance_id),
             configuration_url=f"{self.runtime.api.base_url}/camera/{self.camera}",
         )
 
     @property
     def camera_data(self) -> dict:
-        return ((self.coordinator.data or {}).get("cameras") or {}).get(self.camera, {}) if self.camera else {}
+        if not self.camera:
+            return {}
+        cameras = ((self.coordinator.data or {}).get("cameras") or {})
+        if not isinstance(cameras, dict):
+            return {}
+        data = cameras.get(self.camera, {})
+        return data if isinstance(data, dict) else {}

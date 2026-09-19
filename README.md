@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="brand/logo.png" alt="Veyra" width="420">
+</p>
+
 # Veyra for Home Assistant
 
 Natywna integracja Home Assistant dla **Veyra AI-NVR**.
@@ -48,37 +52,33 @@ Globalnie:
 Integracja bezpośrednio nasłuchuje topicu `.../events` Veyra przez MQTT i sama wywołuje `notify.mobile_app_*`.
 Nie trzeba tworzyć automatyzacji YAML.
 
-Pierwszy alarm eventu używa wybranego poziomu. Kolejne aktualizacje tego samego eventu odświeżają zdjęcie po cichu, z tym samym tagiem, aby nie generować kolejnych głośnych alarmów.
+Pierwszy alarm eventu używa wybranego poziomu. Kolejne aktualizacje tego samego eventu odświeżają zdjęcie tym samym tagiem; pomiędzy nimi mogą być ciche odświeżenia obrazu, a co skonfigurowany interwał ponawiany jest alert/haptic.
 
 Poziomy dla każdej klasy modelu:
 
-- `off` — wyłączone,
-- `silent` — ciche,
-- `normal` — zwykłe,
-- `urgent` — pilne / iOS Time Sensitive / Android high priority,
-- `critical` — iOS Critical Alert + Android high priority / alarm stream.
+- `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyczne`.
 
 Domyślnie:
 
-- `person` → `critical`,
-- `car`, `truck`, `bus`, `bicycle`, `motorcycle` → `urgent`,
-- pozostałe klasy → `off`.
+- `person` → `Pilne`,
+- `car`, `truck`, `bus`, `bicycle`, `motorcycle` → `Pilne`,
+- pozostałe klasy → `Wyłączone`.
 
 Poziom każdej klasy można zmienić przez encję konfiguracyjną `Powiadomienia · <klasa>`.
 
 ### iPhone / iOS
 
-`urgent` używa `time-sensitive`. `critical` używa Critical Alert. Przy pierwszej konfiguracji Companion App trzeba zezwolić iOS na Critical Alerts.
+`Pilne` używa `time-sensitive`. `Krytyczne` używa Critical Alert. Przy pierwszej konfiguracji Companion App trzeba zezwolić iOS na Critical Alerts.
 
 ### Android
 
-`urgent` i `critical` używają `ttl: 0` oraz `priority: high`. `critical` używa również `alarm_stream`, aby dźwięk alarmowy działał niezależnie od zwykłego poziomu dzwonka. Obejście systemowego DND wymaga jednorazowego zezwolenia użytkownika dla odpowiedniego kanału powiadomień Androida.
+`Pilne` i `Krytyczne` używają `ttl: 0` oraz `priority: high`. `Krytyczne` używa również `alarm_stream`, aby dźwięk alarmowy działał niezależnie od zwykłego poziomu dzwonka. Obejście systemowego DND wymaga jednorazowego zezwolenia użytkownika dla odpowiedniego kanału powiadomień Androida.
 
 ## Telefony docelowe
 
-**Veyra → Konfiguruj** pokazuje wykryte `notify.mobile_app_*` i pozwala wskazać jeden lub wiele telefonów. Jeśli nic nie wybierzesz, Veyra wysyła na wszystkie dostępne usługi `notify.mobile_app_*`.
+**Veyra → Konfiguruj** pokazuje wszystkie wykryte urządzenia Companion App (`notify.mobile_app_*`). Przy pierwszym wejściu wszystkie są zaznaczone; możesz każde urządzenie zaznaczyć lub odznaczyć. Pusta lista oznacza **nie wysyłaj na żadne urządzenie**.
 
-W tym samym miejscu ustawiasz minimalny odstęp odświeżania powiadomienia (domyślnie 2 s).
+W tym samym miejscu ustawiasz częstotliwość odświeżania obrazu (domyślnie 2 s) oraz ponawianie wibracji/dźwięku podczas trwającego zdarzenia (domyślnie 5 s, `0` = tylko pierwszy alert).
 
 ## Dynamiczne klasy modelu
 
@@ -99,4 +99,10 @@ Telefon nie musi mieć bezpośredniego dostępu do adresu Veyra. Integracja wyst
 
 ## Uwaga o częstych aktualizacjach
 
-Home Assistant Companion ma limit zwykłych pushy na urządzenie. Dlatego pierwszy alert jest właściwego poziomu, a kolejne update'y są ciche i zastępują poprzednią aktualizację eventu. Minimalny interwał jest konfigurowalny.
+Home Assistant Companion ma limit zwykłych pushy na urządzenie. Dlatego odświeżanie zdjęcia i ponawianie alertu mają osobne interwały. Dzięki temu obraz może być świeży bez generowania dźwięku/wibracji przy każdej pojedynczej aktualizacji MQTT.
+
+## Wygląd powiadomień
+
+Format jest zgodny ze sprawdzoną automatyką Veyra/Frigate: tytuł z ikoną zależną od klasy (`🚨 Wykryto osobę`, `🚗 Wykryto samochód`, itd.), nazwa kamery, druga linia `• pewność XX%`, thumbnail z wersją snapshotu, czas rozpoczęcia eventu, kliknięcie otwierające `/lovelace/monitoring` oraz akcja **📹 Podgląd kamer**.
+
+Podczas trwającego eventu zdjęcie może aktualizować się częściej niż alert. Co skonfigurowany interwał integracja ponawia alert tego samego eventu, aby telefon ponownie zasygnalizował zdarzenie. Android dostaje osobny kanał z `vibrationPattern`; iOS dostaje ponowny alert zgodny z poziomem systemowym.

@@ -23,8 +23,9 @@ DEFAULT_FLOOD_MUTE_ENABLED = True
 DEFAULT_FLOOD_MUTE_THRESHOLD = 12
 DEFAULT_FLOOD_MUTE_WINDOW_SECONDS = 90
 DEFAULT_FLOOD_MUTE_DURATION_MINUTES = 15
-# Do not repeatedly ask about the same camera when the user chooses to keep it active.
-DEFAULT_FLOOD_MUTE_OFFER_COOLDOWN_SECONDS = 15 * 60
+# Once a camera becomes noisy, keep the mute action on normal alerts while
+# activity continues. Each new alert refreshes this TTL.
+DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS = 15 * 60
 
 LEVEL_OFF = "off"
 LEVEL_SILENT = "silent"

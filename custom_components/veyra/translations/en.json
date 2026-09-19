@@ -1,0 +1,16 @@
+{
+  "title": "Veyra",
+  "config": {
+    "step": {"user": {"title": "Connect to Veyra", "description": "Enter only the Veyra IP/hostname and web port. Cameras, MQTT topics and model classes are discovered automatically.", "data": {"host": "IP address / host", "port": "Port"}}},
+    "error": {"cannot_connect": "Cannot connect to Veyra.", "invalid_response": "Veyra returned an invalid response."},
+    "abort": {"already_configured": "This Veyra instance is already configured."}
+  },
+  "options": {
+    "step": {"init": {"title": "Veyra notifications", "description": "Select Home Assistant Companion devices. No selection means every available notify.mobile_app_* service. Per-class alert levels are configured by Veyra config entities.", "data": {"notify_targets": "Mobile devices", "notification_update_seconds": "Minimum notification update interval"}}}
+  },
+  "entity": {
+    "switch": {"ai_detection": {"name": "AI Detection"}, "notifications": {"name": "Notifications"}, "snapshots": {"name": "Snapshots"}},
+    "binary_sensor": {"motion": {"name": "Motion"}, "objects": {"name": "Object"}, "night": {"name": "Night mode"}, "online": {"name": "Connection"}},
+    "sensor": {"cpu_usage": {"name": "CPU"}, "igpu_usage": {"name": "Intel GPU"}, "coral_latency": {"name": "Coral latency"}, "fps": {"name": "FPS"}, "active_objects": {"name": "Active objects"}, "detector_latency": {"name": "Detector latency"}}
+  }
+}

@@ -90,10 +90,10 @@ def _repeat_number(data: dict[str, Any]) -> int:
 class VeyraNotificationManager:
     """Forward Veyra's native notification lifecycle to Companion App.
 
-    Veyra CORE owns cadence and false-positive filtering.  The integration does
-    not mute, debounce or rate-limit valid alarms.  New CORE versions publish
-    prealert/confirmed/repeat on mqtt.notifications_topic.  Older CORE versions
-    are still supported through the Frigate-style events topic.
+    Veyra CORE owns cadence and false-positive filtering. The integration does
+    not debounce or rate-limit valid alarms. Native CORE publishes
+    prealert/confirmed/repeat on mqtt.notifications_topic; older CORE builds are
+    still supported through the Frigate-style events topic.
     """
 
     def __init__(self, hass: HomeAssistant, entry, runtime) -> None:
@@ -291,9 +291,9 @@ class VeyraNotificationManager:
         except (TypeError, ValueError):
             when = 0
 
-        # Native notification lifecycle must be visible as repeated warnings.
-        # Separate lifecycle tags make confirmed a second delivery attempt and
-        # every CORE repeat a new alert instead of silently replacing a card.
+        # Every lifecycle step uses a separate tag. This is important for both
+        # delivery reliability and haptics: confirmed/repeat must create a fresh
+        # phone alert instead of silently replacing the previous notification.
         if kind == "prealert":
             tag = f"veyra_{event_id}_prealert"
         elif kind == "confirmed":
@@ -328,36 +328,49 @@ class VeyraNotificationManager:
                     "alert_once": True,
                 }
             )
-        elif level == LEVEL_NORMAL:
+            return payload
+
+        # 0.3.1: every non-silent VEYRA delivery is an actual alert.
+        # Android: ttl/priority avoids Doze delay; a NEW channel name forces
+        # Android 8+ to create the channel with vibration enabled because channel
+        # vibration/importance are frozen after first creation.
+        # iOS: sound + interruption-level produces the system haptic according
+        # to iOS notification/haptic settings; Critical remains available for
+        # users who want to bypass mute/Focus as well.
+        payload.update(
+            {
+                "ttl": 0,
+                "priority": "high",
+                "vibrationPattern": "100, 700, 100, 700, 100",
+                "alert_once": False,
+            }
+        )
+
+        if level == LEVEL_NORMAL:
             payload.update(
                 {
-                    "push": {"interruption-level": "active", "sound": "default"},
-                    "channel": "Veyra",
-                    "importance": "default",
-                    "vibrationPattern": "100, 250",
-                    "alert_once": False,
+                    "push": {
+                        "interruption-level": "active",
+                        "sound": "default",
+                    },
+                    "channel": "Veyra Alerts v2",
+                    "importance": "high",
                 }
             )
         elif level == LEVEL_URGENT:
             payload.update(
                 {
-                    "ttl": 0,
-                    "priority": "high",
                     "push": {
                         "interruption-level": "time-sensitive",
                         "sound": "default",
                     },
-                    "channel": "Veyra Security",
-                    "importance": "high",
-                    "vibrationPattern": "100, 700, 100",
-                    "alert_once": False,
+                    "channel": "Veyra Security v2",
+                    "importance": "max",
                 }
             )
         elif level == LEVEL_CRITICAL:
             payload.update(
                 {
-                    "ttl": 0,
-                    "priority": "high",
                     "push": {
                         "interruption-level": "critical",
                         "sound": {
@@ -369,7 +382,6 @@ class VeyraNotificationManager:
                     "channel": "alarm_stream",
                     "importance": "max",
                     "vibrationPattern": "100, 900, 100, 900, 100",
-                    "alert_once": False,
                 }
             )
         return payload

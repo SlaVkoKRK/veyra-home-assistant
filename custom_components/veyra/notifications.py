@@ -1,30 +1,19 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
 import json
 import logging
-import time
 from typing import Any
 
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.components.mqtt.client import async_subscribe
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .api import VeyraApiError
 from .const import (
     CONF_CLASS_LEVELS,
-    CONF_FLOOD_MUTE_DURATION_MINUTES,
-    CONF_FLOOD_MUTE_ENABLED,
-    CONF_FLOOD_MUTE_THRESHOLD,
-    CONF_FLOOD_MUTE_WINDOW_SECONDS,
     CONF_NOTIFY_TARGETS,
-    DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS,
-    DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
-    DEFAULT_FLOOD_MUTE_ENABLED,
-    DEFAULT_FLOOD_MUTE_THRESHOLD,
-    DEFAULT_FLOOD_MUTE_WINDOW_SECONDS,
     LEVEL_CRITICAL,
     LEVEL_NORMAL,
     LEVEL_OFF,
@@ -55,6 +44,8 @@ OBJECT_TITLES: dict[str, tuple[str, str]] = {
     "bear": ("🐻", "Wykryto niedźwiedzia"),
 }
 
+DIRECT_TYPES = {"prealert", "confirmed", "repeat"}
+
 
 def _score_percent(value: Any) -> int | None:
     try:
@@ -66,73 +57,113 @@ def _score_percent(value: Any) -> int | None:
         return None
 
 
-def _notification_version(after: dict[str, Any]) -> int:
-    current = after.get("notification") or {}
+def _notification_version(data: dict[str, Any]) -> int:
+    try:
+        value = int(data.get("snapshot_version") or 0)
+        if value > 0:
+            return value
+    except (TypeError, ValueError):
+        pass
+
+    current = data.get("notification") or {}
     if isinstance(current, dict):
         try:
-            version = int(current.get("version") or 0)
-            if version > 0:
-                return version
+            value = int(current.get("version") or 0)
+            if value > 0:
+                return value
         except (TypeError, ValueError):
             pass
+
     try:
-        return int(after.get("update_seq") or 0)
+        return int(data.get("update_seq") or 0)
     except (TypeError, ValueError):
         return 0
 
 
+def _repeat_number(data: dict[str, Any]) -> int:
+    try:
+        return max(1, int(data.get("repeat") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
 class VeyraNotificationManager:
-    """Forward Veyra events and manage pocket-safe temporary camera mute."""
+    """Forward Veyra's native notification lifecycle to Companion App.
+
+    Veyra CORE owns cadence and false-positive filtering.  The integration does
+    not mute, debounce or rate-limit valid alarms.  New CORE versions publish
+    prealert/confirmed/repeat on mqtt.notifications_topic.  Older CORE versions
+    are still supported through the Frigate-style events topic.
+    """
 
     def __init__(self, hass: HomeAssistant, entry, runtime) -> None:
         self.hass = hass
         self.entry = entry
         self.runtime = runtime
         self._unsubscribe = None
-        self._action_unsubscribe = None
-
-        # Runtime-only by design. A temporary mute or "noisy camera" state must
-        # never survive a Home Assistant restart.
-        self._camera_alert_times: dict[str, deque[float]] = defaultdict(deque)
-        self._camera_muted_until: dict[str, float] = {}
-        self._camera_noisy_until: dict[str, float] = {}
+        self._direct_notifications = False
 
     async def async_start(self) -> None:
-        topic = str(
-            (((self.runtime.info or {}).get("mqtt") or {}).get("events_topic") or "ainvr/events")
-        )
+        mqtt_info = (self.runtime.info or {}).get("mqtt") or {}
+        notifications_topic = str(mqtt_info.get("notifications_topic") or "").strip()
+        if notifications_topic:
+            topic = notifications_topic
+            self._direct_notifications = True
+        else:
+            topic = str(mqtt_info.get("events_topic") or "ainvr/events")
+            self._direct_notifications = False
+
         try:
             self._unsubscribe = await async_subscribe(
                 self.hass, topic, self._mqtt_message, qos=1
             )
-            _LOGGER.info("Veyra built-in notifications listening on MQTT %s", topic)
+            _LOGGER.info(
+                "Veyra notifications listening on MQTT %s (%s protocol)",
+                topic,
+                "native" if self._direct_notifications else "legacy events",
+            )
         except (HomeAssistantError, KeyError) as err:
             _LOGGER.warning(
-                "Veyra built-in push notifications are inactive because Home Assistant MQTT is not ready: %s",
+                "Veyra push notifications are inactive because Home Assistant MQTT is not ready: %s",
                 err,
             )
-
-        self._action_unsubscribe = self.hass.bus.async_listen(
-            "mobile_app_notification_action", self._notification_action
-        )
 
     async def async_stop(self) -> None:
         if self._unsubscribe is not None:
             self._unsubscribe()
             self._unsubscribe = None
-        if self._action_unsubscribe is not None:
-            self._action_unsubscribe()
-            self._action_unsubscribe = None
 
     async def _mqtt_message(self, msg) -> None:
         try:
             payload = json.loads(msg.payload)
         except (TypeError, ValueError, json.JSONDecodeError):
-            _LOGGER.debug("Ignored malformed Veyra MQTT event")
+            _LOGGER.debug("Ignored malformed Veyra MQTT message")
             return
         if not isinstance(payload, dict):
             return
 
+        if self._direct_notifications:
+            await self._handle_native(payload)
+        else:
+            await self._handle_legacy_event(payload)
+
+    async def _handle_native(self, payload: dict[str, Any]) -> None:
+        kind = str(payload.get("type") or "").strip().lower()
+        if kind not in DIRECT_TYPES:
+            return
+
+        event_id = str(payload.get("id") or "")
+        if not event_id:
+            return
+
+        label = str(payload.get("label") or "object")
+        level = self._class_level(label)
+        if level == LEVEL_OFF:
+            return
+
+        await self._send(payload, event_id, level, kind=kind)
+
+    async def _handle_legacy_event(self, payload: dict[str, Any]) -> None:
         event_type = str(payload.get("type") or "update")
         if event_type not in {"new", "update"}:
             return
@@ -153,15 +184,7 @@ class VeyraNotificationManager:
         if level == LEVEL_OFF:
             return
 
-        camera = str(after.get("camera") or "kamera")
-        if self._camera_is_muted(camera):
-            _LOGGER.debug("Veyra notifications temporarily muted for %s", camera)
-            return
-
-        noisy = self._camera_is_noisy(camera)
-        sent = await self._send(after, event_id, level, noisy=noisy)
-        if sent:
-            self._record_alert(camera)
+        await self._send(after, event_id, level, kind=event_type)
 
     def _class_level(self, label: str) -> str:
         levels = self.entry.options.get(CONF_CLASS_LEVELS, {})
@@ -187,11 +210,7 @@ class VeyraNotificationManager:
         for item in self.runtime.info.get("cameras") or []:
             if not isinstance(item, dict) or str(item.get("id") or "") != camera_id:
                 continue
-            value = (
-                item.get("name")
-                or item.get("display_name")
-                or item.get("friendly_name")
-            )
+            value = item.get("name") or item.get("display_name") or item.get("friendly_name")
             if value:
                 return str(value)
         return camera_id.replace("_", " ").title()
@@ -205,37 +224,35 @@ class VeyraNotificationManager:
 
     async def _send(
         self,
-        after: dict[str, Any],
+        data: dict[str, Any],
         event_id: str,
         level: str,
         *,
-        noisy: bool,
+        kind: str,
     ) -> bool:
         targets = self._targets()
         if not targets:
             _LOGGER.debug("No selected mobile_app notify targets available for Veyra")
             return False
 
-        camera = str(after.get("camera") or "kamera")
-        label = str(after.get("label") or "obiekt")
-        score = _score_percent(after.get("score", after.get("top_score")))
+        camera = str(data.get("camera") or "kamera")
+        label = str(data.get("label") or "obiekt")
+        score = _score_percent(
+            data.get("snapshot_score", data.get("score", data.get("top_score")))
+        )
+        repeat = _repeat_number(data)
+
         title = self._title(label)
         message = self._camera_name(camera)
         if score is not None and score > 0:
             message += f"\n• pewność {score}%"
+        if kind == "repeat" or repeat > 2:
+            message += f"\n• alarm {repeat}"
 
-        if noisy and self._flood_mute_enabled():
-            duration = self._mute_duration_minutes()
-            message += f"\n• dużo zdarzeń — możesz wyciszyć na {duration} min"
-
-        data = self._payload(
-            after,
-            event_id,
-            camera,
-            level,
-            include_mute_action=noisy and self._flood_mute_enabled(),
+        notification_data = self._payload(
+            data, event_id, camera, level, kind=kind, repeat=repeat
         )
-        call_data = {"title": title, "message": message, "data": data}
+        call_data = {"title": title, "message": message, "data": notification_data}
         current_services = self.hass.services.async_services().get("notify", {})
         sent = False
         for service in targets:
@@ -256,53 +273,54 @@ class VeyraNotificationManager:
 
     def _payload(
         self,
-        after: dict[str, Any],
+        data: dict[str, Any],
         event_id: str,
         camera: str,
         level: str,
         *,
-        include_mute_action: bool,
+        kind: str,
+        repeat: int,
     ) -> dict[str, Any]:
-        version = _notification_version(after)
+        version = _notification_version(data)
         image = (
             f"/api/veyra/notifications/{self.entry.entry_id}/{event_id}/"
             f"{version}/current.jpg"
         )
         try:
-            when = int(float(after.get("start_time") or 0))
+            when = int(float(data.get("notification_time") or data.get("start_time") or 0))
         except (TypeError, ValueError):
             when = 0
 
-        actions: list[dict[str, str]] = [
-            {
-                "action": "URI",
-                "title": "📹 Podgląd kamer",
-                "uri": "/lovelace/monitoring",
-            }
-        ]
-        if include_mute_action:
-            duration = self._mute_duration_minutes()
-            actions.append(
-                {
-                    "action": (
-                        f"VEYRA_MUTE:{self.entry.entry_id}:{camera}:{duration}"
-                    ),
-                    "title": f"🔕 Wycisz {duration} min",
-                }
-            )
+        # Native notification lifecycle must be visible as repeated warnings.
+        # Separate lifecycle tags make confirmed a second delivery attempt and
+        # every CORE repeat a new alert instead of silently replacing a card.
+        if kind == "prealert":
+            tag = f"veyra_{event_id}_prealert"
+        elif kind == "confirmed":
+            tag = f"veyra_{event_id}_confirmed"
+        elif kind == "repeat":
+            tag = f"veyra_{event_id}_repeat_{repeat}"
+        else:
+            tag = f"veyra_{event_id}"
 
-        data: dict[str, Any] = {
+        payload: dict[str, Any] = {
             "image": image,
-            "tag": f"veyra_{event_id}",
+            "tag": tag,
             "group": f"veyra_{camera}",
             "url": "/lovelace/monitoring",
-            "actions": actions,
+            "actions": [
+                {
+                    "action": "URI",
+                    "title": "📹 Podgląd kamer",
+                    "uri": "/lovelace/monitoring",
+                }
+            ],
         }
         if when > 0:
-            data["when"] = when
+            payload["when"] = when
 
         if level == LEVEL_SILENT:
-            data.update(
+            payload.update(
                 {
                     "push": {"interruption-level": "passive"},
                     "channel": "Veyra Ciche",
@@ -311,12 +329,9 @@ class VeyraNotificationManager:
                 }
             )
         elif level == LEVEL_NORMAL:
-            data.update(
+            payload.update(
                 {
-                    "push": {
-                        "interruption-level": "active",
-                        "sound": "default",
-                    },
+                    "push": {"interruption-level": "active", "sound": "default"},
                     "channel": "Veyra",
                     "importance": "default",
                     "vibrationPattern": "100, 250",
@@ -324,7 +339,7 @@ class VeyraNotificationManager:
                 }
             )
         elif level == LEVEL_URGENT:
-            data.update(
+            payload.update(
                 {
                     "ttl": 0,
                     "priority": "high",
@@ -339,7 +354,7 @@ class VeyraNotificationManager:
                 }
             )
         elif level == LEVEL_CRITICAL:
-            data.update(
+            payload.update(
                 {
                     "ttl": 0,
                     "priority": "high",
@@ -357,215 +372,7 @@ class VeyraNotificationManager:
                     "alert_once": False,
                 }
             )
-        return data
-
-    # ---------------------------------------------------------------------
-    # Pocket-safe per-camera mute
-    # ---------------------------------------------------------------------
-
-    def _flood_mute_enabled(self) -> bool:
-        return bool(
-            self.entry.options.get(
-                CONF_FLOOD_MUTE_ENABLED, DEFAULT_FLOOD_MUTE_ENABLED
-            )
-        )
-
-    def _flood_threshold(self) -> int:
-        try:
-            return max(
-                3,
-                min(
-                    50,
-                    int(
-                        self.entry.options.get(
-                            CONF_FLOOD_MUTE_THRESHOLD,
-                            DEFAULT_FLOOD_MUTE_THRESHOLD,
-                        )
-                    ),
-                ),
-            )
-        except (TypeError, ValueError):
-            return DEFAULT_FLOOD_MUTE_THRESHOLD
-
-    def _flood_window_seconds(self) -> int:
-        try:
-            return max(
-                30,
-                min(
-                    600,
-                    int(
-                        self.entry.options.get(
-                            CONF_FLOOD_MUTE_WINDOW_SECONDS,
-                            DEFAULT_FLOOD_MUTE_WINDOW_SECONDS,
-                        )
-                    ),
-                ),
-            )
-        except (TypeError, ValueError):
-            return DEFAULT_FLOOD_MUTE_WINDOW_SECONDS
-
-    def _mute_duration_minutes(self) -> int:
-        try:
-            return max(
-                1,
-                min(
-                    1440,
-                    int(
-                        self.entry.options.get(
-                            CONF_FLOOD_MUTE_DURATION_MINUTES,
-                            DEFAULT_FLOOD_MUTE_DURATION_MINUTES,
-                        )
-                    ),
-                ),
-            )
-        except (TypeError, ValueError):
-            return DEFAULT_FLOOD_MUTE_DURATION_MINUTES
-
-    def _camera_is_muted(self, camera: str) -> bool:
-        now = time.time()
-        muted_until = float(self._camera_muted_until.get(camera, 0.0) or 0.0)
-        if muted_until <= now:
-            self._camera_muted_until.pop(camera, None)
-            return False
-        return True
-
-    def _camera_is_noisy(self, camera: str) -> bool:
-        if not self._flood_mute_enabled():
-            return False
-        now = time.time()
-        noisy_until = float(self._camera_noisy_until.get(camera, 0.0) or 0.0)
-        if noisy_until <= now:
-            self._camera_noisy_until.pop(camera, None)
-            return False
-        return True
-
-    def _record_alert(self, camera: str) -> None:
-        if not self._flood_mute_enabled() or self._camera_is_muted(camera):
-            return
-
-        now = time.time()
-        history = self._camera_alert_times[camera]
-        history.append(now)
-        cutoff = now - self._flood_window_seconds()
-        while history and history[0] < cutoff:
-            history.popleft()
-
-        if self._camera_is_noisy(camera):
-            # Keep the mute action available while the camera is actively flooding.
-            self._camera_noisy_until[camera] = (
-                now + DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS
-            )
-            return
-
-        if len(history) >= self._flood_threshold():
-            self._camera_noisy_until[camera] = (
-                now + DEFAULT_FLOOD_MUTE_ACTION_TTL_SECONDS
-            )
-            _LOGGER.info(
-                "Veyra camera %s entered noisy notification state (%d alerts in %d s)",
-                camera,
-                len(history),
-                self._flood_window_seconds(),
-            )
-
-    async def _notification_action(self, event: Event) -> None:
-        action = str((event.data or {}).get("action") or "")
-        if not action:
-            return
-
-        mute_prefix = f"VEYRA_MUTE:{self.entry.entry_id}:"
-        unmute_prefix = f"VEYRA_UNMUTE:{self.entry.entry_id}:"
-
-        if action.startswith(mute_prefix):
-            tail = action[len(mute_prefix) :]
-            try:
-                camera, minutes_raw = tail.rsplit(":", 1)
-                minutes = max(1, min(1440, int(minutes_raw)))
-            except (ValueError, TypeError):
-                return
-            if not camera:
-                return
-
-            self._camera_muted_until[camera] = time.time() + (minutes * 60)
-            self._camera_alert_times.pop(camera, None)
-            self._camera_noisy_until.pop(camera, None)
-            _LOGGER.info(
-                "Veyra notifications muted for %s for %d minutes",
-                camera,
-                minutes,
-            )
-            await self._send_mute_confirmation(camera, minutes)
-            return
-
-        if action.startswith(unmute_prefix):
-            camera = action[len(unmute_prefix) :]
-            if not camera:
-                return
-            self._camera_muted_until.pop(camera, None)
-            self._camera_alert_times.pop(camera, None)
-            self._camera_noisy_until.pop(camera, None)
-            _LOGGER.info("Veyra notifications manually unmuted for %s", camera)
-            await self._send_unmute_confirmation(camera)
-
-    async def _send_mute_confirmation(self, camera: str, minutes: int) -> None:
-        unmute_action = f"VEYRA_UNMUTE:{self.entry.entry_id}:{camera}"
-        data: dict[str, Any] = {
-            "tag": f"veyra_mute_status_{camera}",
-            "group": "veyra_control",
-            "push": {"interruption-level": "passive"},
-            "channel": "Veyra Ciche",
-            "importance": "low",
-            "actions": [
-                {
-                    "action": unmute_action,
-                    "title": "🔔 Włącz teraz",
-                }
-            ],
-        }
-        await self._send_to_targets(
-            f"🔕 Wyciszono · {self._camera_name(camera)}",
-            f"Powiadomienia z tej kamery są wyciszone na {minutes} min.",
-            data,
-        )
-
-    async def _send_unmute_confirmation(self, camera: str) -> None:
-        data: dict[str, Any] = {
-            "tag": f"veyra_mute_status_{camera}",
-            "group": "veyra_control",
-            "push": {"interruption-level": "passive"},
-            "channel": "Veyra Ciche",
-            "importance": "low",
-        }
-        await self._send_to_targets(
-            f"🔔 Powiadomienia aktywne · {self._camera_name(camera)}",
-            "Tymczasowe wyciszenie zostało anulowane.",
-            data,
-        )
-
-    async def _send_to_targets(
-        self, title: str, message: str, data: dict[str, Any]
-    ) -> bool:
-        targets = self._targets()
-        if not targets:
-            return False
-        current_services = self.hass.services.async_services().get("notify", {})
-        call_data = {"title": title, "message": message, "data": data}
-        sent = False
-        for service in targets:
-            if service not in current_services:
-                continue
-            try:
-                await self.hass.services.async_call(
-                    "notify", service, call_data, blocking=False
-                )
-                sent = True
-            except HomeAssistantError as err:
-                _LOGGER.warning(
-                    "Unable to send Veyra control notification via notify.%s: %s",
-                    service,
-                    err,
-                )
-        return sent
+        return payload
 
 
 class VeyraThumbnailView(HomeAssistantView):
@@ -594,8 +401,6 @@ class VeyraThumbnailView(HomeAssistantView):
 
 
 class VeyraCurrentNotificationView(HomeAssistantView):
-    # Version is deliberately part of the path. iOS/Companion cannot reuse the
-    # previous attachment URL when a Veyra event is updated.
     url = "/api/veyra/notifications/{entry_id}/{event_id}/{version}/current.jpg"
     name = "api:veyra:notifications:current"
     requires_auth = True

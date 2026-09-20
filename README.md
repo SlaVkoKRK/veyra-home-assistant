@@ -15,50 +15,35 @@ Do konfiguracji podajesz tylko adres IP / host Veyra i port WWW Veyra (domyślni
 
 ## Wymagania
 
-- Veyra **0.8.3+**,
+- Veyra **0.8.3+**; natywny lifecycle powiadomień `prealert / confirmed / repeat` jest używany automatycznie przez VEYRA 1.0.7+,
 - Home Assistant **2025.6.0+**,
-- skonfigurowana integracja MQTT w Home Assistant, korzystająca z tego samego brokera co Veyra,
-- Home Assistant Companion App na telefonach, które mają otrzymywać push.
-
-## Kamery
-
-Dla każdej kamery integracja tworzy niezależną encję `camera` z własnym `unique_id` i `device_info`. Miniatura/still jest pobierana z per-kamera snapshot API Veyra, a RTSP/go2rtc służy do LIVE.
+- skonfigurowana integracja MQTT w Home Assistant korzystająca z tego samego brokera co Veyra,
+- Home Assistant Companion App na telefonach otrzymujących push.
 
 ## Wbudowane powiadomienia — bez automatyzacji
 
-Integracja nasłuchuje `ainvr/events` i każdy `new` / `update` przechodzący filtry wysyła natychmiast jako push. Integracja nie ogranicza częstotliwości — rytm kontroluje sama Veyra.
+Od **0.3.0** integracja używa natywnego kanału `ainvr/notifications`, jeśli CORE go publikuje. Obsługiwane są:
 
-Poziomy klas są po polsku: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyczne`.
+- `prealert` — pierwszy szybki, pewny alarm,
+- `confirmed` — niezależne potwierdzenie zapisanego eventu,
+- `repeat` — ponawiane ostrzeżenie, gdy obiekt nadal jest aktywny.
+
+Integracja **nie wycisza i nie rate-limit'uje** poprawnych alarmów. Rytm oraz maksymalna liczba repeatów są kontrolowane przez Veyra CORE. `prealert`, `confirmed` i każdy `repeat` dostają osobne tagi powiadomień. Dzięki temu potwierdzenie jest drugą szansą dostarczenia, a każdy repeat faktycznie ponownie ostrzega użytkownika zamiast tylko bezgłośnie podmienić poprzednią kartę.
+
+Jeśli CORE nie udostępnia `notifications_topic`, integracja automatycznie wraca do kompatybilnego trybu `ainvr/events`.
+
+## Poziomy powiadomień klas
+
+Dla klas dostępne są poziomy: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyczne`. Klasy modelu są pobierane dynamicznie z Veyra — integracja nie ma zaszytej listy obiektów.
 
 ## Telefony docelowe
 
-**Veyra → Konfiguruj** pokazuje wszystkie wykryte `notify.mobile_app_*`. Każde urządzenie można globalnie zaznaczyć lub odznaczyć. Pusta lista oznacza brak wysyłki.
+**Veyra → Konfiguruj** pokazuje wykryte `notify.mobile_app_*`. Możesz wskazać telefony, które mają otrzymywać alerty. Nie ma już ustawień ręcznego/flood mute.
 
-## Pocket-safe wyciszenie kamery — 0.2.8
+## Obraz powiadomienia
 
-Integracja zlicza wysłane alerty osobno dla każdej kamery. Domyślnie, gdy jedna kamera wygeneruje **12 powiadomień w 90 sekund**, nie pojawia się żadne dodatkowe pytanie ani osobny push. Veyra nadal normalnie wysyła kolejne alarmy z dźwiękiem/wibracją, ale do kolejnych powiadomień tej kamery dodaje:
+Push używa wersjonowanego `current.jpg`, dzięki czemu kolejne alerty aktywnego eventu mogą pokazywać nowszą klatkę bez cache starego obrazu. Dla native lifecycle pewność jest preferowana z `snapshot_score`, a następnie z bieżącego `score`.
 
-- dopisek **„dużo zdarzeń — możesz wyciszyć na 15 min”**,
-- przycisk **🔕 Wycisz 15 min**.
+## Automatyczne odzyskiwanie po restarcie CORE
 
-Dzięki temu telefon pozostawiony w kieszeni nadal alarmuje bez przerwy. Gdy użytkownik spojrzy na zwykłe powiadomienie, może jednym kliknięciem wyciszyć tylko tę konkretną kamerę.
-
-Próg, okno zliczania oraz czas wyciszenia są ustawiane globalnie w **Veyra → Konfiguruj**. Dostępne czasy wyciszenia: `10 / 15 / 20 / 30 min`.
-
-Wyciszenie nie zatrzymuje detekcji, MQTT, eventów, snapshotów ani encji Home Assistant. Po czasie powiadomienia włączają się automatycznie. Po wyciszeniu integracja wysyła ciche potwierdzenie z akcją **🔔 Włącz teraz**, która natychmiast cofa mute.
-
-Stan „dużo alertów” utrzymuje przycisk wyciszenia przez 15 minut od ostatniego alertu i jest przedłużany przez kolejne alarmy. Tymczasowe mute oraz stan flood są stanem runtime i nie są zachowywane po restarcie Home Assistant.
-
-## Bieżący obraz i pewność — 0.2.4 / Veyra 0.8.3
-
-`top_score` w Veyra jest historycznym maksimum tracka i nie jest bieżącą pewnością. Integracja 0.2.4 pokazuje w powiadomieniu `after.score`, czyli aktualny wynik ostatniego realnego trafienia detektora.
-
-Veyra 0.8.3 utrzymuje osobny `current.jpg` dla aktywnego obiektu. Jest on nadpisywany przy każdym realnym trafieniu detektora i ma własny `notification.version`. Best thumbnail oraz finalny snapshot galerii pozostają niezależne.
-
-Każdy push używa stabilnego `tag` eventu, ale adres obrazka zawiera wersję bieżącego kadru w ścieżce. Dzięki temu Companion/iOS nie może użyć poprzedniego załącznika z cache, a jedno powiadomienie nadal jest aktualizowane.
-
-Format pozostaje zgodny z automatyką Veyra/Frigate: tytuł klasy z emoji, nazwa kamery, `• pewność XX%`, czas rozpoczęcia eventu, `/lovelace/monitoring` oraz przycisk **📹 Podgląd kamer**.
-
-## Dynamiczne klasy modelu
-
-Integracja nie ma zaszytej listy 17 klas. Klasy są pobierane dynamicznie z metadanych aktywnego modelu Veyra.
+Integracja nasłuchuje retained `ainvr/available`. Po powrocie CORE do `online` odświeża `/api/ha/v1/info` i automatycznie uzbraja ponownie subskrypcję MQTT — nie trzeba przeładowywać integracji ręcznie.

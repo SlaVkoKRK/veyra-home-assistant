@@ -5,95 +5,45 @@
       "user": {
         "title": "Połącz z Veyra",
         "description": "Podaj tylko adres IP/nazwę hosta oraz port WWW Veyra. Kamery, MQTT i klasy modelu zostaną wykryte automatycznie.",
-        "data": {
-          "host": "Adres IP / host",
-          "port": "Port"
-        },
-        "data_description": {
-          "host": "Np. 10.10.0.20",
-          "port": "Domyślnie 8080"
-        }
+        "data": {"host": "Adres IP / host", "port": "Port"},
+        "data_description": {"host": "Np. 10.10.0.20", "port": "Domyślnie 8080"}
       }
     },
     "error": {
       "cannot_connect": "Nie można połączyć się z Veyra.",
       "invalid_response": "Veyra zwróciła nieprawidłową odpowiedź."
     },
-    "abort": {
-      "already_configured": "Ta instancja Veyra jest już skonfigurowana."
-    }
+    "abort": {"already_configured": "Ta instancja Veyra jest już skonfigurowana."}
   },
   "options": {
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz urządzenia z aplikacją Home Assistant. Każdy event new/update jest wysyłany od razu. Gdy jedna kamera generuje serię alertów, Veyra nadal normalnie alarmuje, ale do kolejnych powiadomień dodaje przycisk tymczasowego wyciszenia tej kamery.",
-        "data": {
-          "notify_targets": "Urządzenia otrzymujące powiadomienia",
-          "flood_mute_enabled": "Pokazuj przycisk wyciszenia przy serii powiadomień",
-          "flood_mute_threshold": "Liczba powiadomień przed pokazaniem przycisku",
-          "flood_mute_window_seconds": "Okno zliczania powiadomień",
-          "flood_mute_duration_minutes": "Czas wyciszenia kamery"
-        },
-        "data_description": {
-          "flood_mute_enabled": "Nie wysyła osobnego pytania. Telefon nadal dzwoni/wibruje; po przekroczeniu progu przycisk wyciszenia pojawia się w zwykłych alertach tej kamery.",
-          "flood_mute_threshold": "Domyślnie 12. Po tylu pushach z jednej kamery w wybranym oknie czasu kolejne alerty dostaną przycisk wyciszenia.",
-          "flood_mute_window_seconds": "Domyślnie 90 s.",
-          "flood_mute_duration_minutes": "Po tym czasie powiadomienia z wyciszonej kamery włączą się automatycznie."
-        }
+        "description": "Wybierz urządzenia z aplikacją Home Assistant. Veyra natywnie przekazuje prealert, confirmed i repeat. Repeat pozostaje aktywny — jego rytm ustala CORE; integracja nie wycisza i nie ogranicza poprawnych alarmów.",
+        "data": {"notify_targets": "Urządzenia otrzymujące powiadomienia"}
       }
     }
   },
   "entity": {
-    "camera": {
-      "live_view": {
-        "name": "Podgląd"
-      }
-    },
+    "camera": {"live_view": {"name": "Podgląd"}},
     "switch": {
-      "ai_detection": {
-        "name": "AI Detection"
-      },
-      "notifications": {
-        "name": "Powiadomienia"
-      },
-      "snapshots": {
-        "name": "Snapshoty"
-      }
+      "ai_detection": {"name": "AI Detection"},
+      "notifications": {"name": "Powiadomienia"},
+      "snapshots": {"name": "Snapshoty"}
     },
     "binary_sensor": {
-      "motion": {
-        "name": "Ruch"
-      },
-      "objects": {
-        "name": "Obiekt"
-      },
-      "night": {
-        "name": "Tryb nocny"
-      },
-      "online": {
-        "name": "Połączenie"
-      }
+      "motion": {"name": "Ruch"},
+      "objects": {"name": "Obiekt"},
+      "night": {"name": "Tryb nocny"},
+      "online": {"name": "Połączenie"}
     },
     "sensor": {
-      "cpu_usage": {
-        "name": "CPU"
-      },
-      "igpu_usage": {
-        "name": "Intel GPU"
-      },
-      "coral_latency": {
-        "name": "Coral latency"
-      },
-      "fps": {
-        "name": "FPS"
-      },
-      "active_objects": {
-        "name": "Aktywne obiekty"
-      },
-      "detector_latency": {
-        "name": "Detector latency"
-      }
+      "cpu_usage": {"name": "CPU"},
+      "igpu_usage": {"name": "Intel GPU"},
+      "coral_latency": {"name": "Coral latency"},
+      "fps": {"name": "FPS"},
+      "active_objects": {"name": "Aktywne obiekty"},
+      "detector_latency": {"name": "Detector latency"}
     }
   }
 }

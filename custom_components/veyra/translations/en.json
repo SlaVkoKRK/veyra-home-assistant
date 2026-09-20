@@ -5,91 +5,44 @@
       "user": {
         "title": "Connect to Veyra",
         "description": "Enter only the Veyra IP/hostname and web port. Cameras, MQTT topics and model classes are discovered automatically.",
-        "data": {
-          "host": "IP address / host",
-          "port": "Port"
-        }
+        "data": {"host": "IP address / host", "port": "Port"}
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to Veyra.",
       "invalid_response": "Veyra returned an invalid response."
     },
-    "abort": {
-      "already_configured": "This Veyra instance is already configured."
-    }
+    "abort": {"already_configured": "This Veyra instance is already configured."}
   },
   "options": {
     "step": {
       "init": {
         "title": "Veyra notifications",
-        "description": "Select Home Assistant Companion devices. Every Veyra new/update event is forwarded immediately. When one camera generates a burst of alerts, Veyra keeps alerting normally but adds a temporary mute button to subsequent notifications from that camera.",
-        "data": {
-          "notify_targets": "Notification devices",
-          "flood_mute_enabled": "Show mute button after a notification burst",
-          "flood_mute_threshold": "Notifications before showing the mute button",
-          "flood_mute_window_seconds": "Notification counting window",
-          "flood_mute_duration_minutes": "Camera mute duration"
-        },
-        "data_description": {
-          "flood_mute_enabled": "No separate prompt is sent. The phone keeps sounding/vibrating; after the threshold, the mute button appears on normal alerts from that camera.",
-          "flood_mute_threshold": "Default 12. After this many pushes from one camera within the selected window, subsequent alerts get a mute button.",
-          "flood_mute_window_seconds": "Default 90 seconds.",
-          "flood_mute_duration_minutes": "Notifications for the muted camera automatically resume after this time."
-        }
+        "description": "Select Home Assistant Companion devices. Veyra forwards the native prealert, confirmed and repeat lifecycle. Repeat remains enabled and its cadence is controlled by CORE; the integration does not mute or rate-limit valid alarms.",
+        "data": {"notify_targets": "Notification devices"}
       }
     }
   },
   "entity": {
-    "camera": {
-      "live_view": {
-        "name": "Live view"
-      }
-    },
+    "camera": {"live_view": {"name": "Live view"}},
     "switch": {
-      "ai_detection": {
-        "name": "AI Detection"
-      },
-      "notifications": {
-        "name": "Notifications"
-      },
-      "snapshots": {
-        "name": "Snapshots"
-      }
+      "ai_detection": {"name": "AI Detection"},
+      "notifications": {"name": "Notifications"},
+      "snapshots": {"name": "Snapshots"}
     },
     "binary_sensor": {
-      "motion": {
-        "name": "Motion"
-      },
-      "objects": {
-        "name": "Object"
-      },
-      "night": {
-        "name": "Night mode"
-      },
-      "online": {
-        "name": "Connection"
-      }
+      "motion": {"name": "Motion"},
+      "objects": {"name": "Object"},
+      "night": {"name": "Night mode"},
+      "online": {"name": "Connection"}
     },
     "sensor": {
-      "cpu_usage": {
-        "name": "CPU"
-      },
-      "igpu_usage": {
-        "name": "Intel GPU"
-      },
-      "coral_latency": {
-        "name": "Coral latency"
-      },
-      "fps": {
-        "name": "FPS"
-      },
-      "active_objects": {
-        "name": "Active objects"
-      },
-      "detector_latency": {
-        "name": "Detector latency"
-      }
+      "cpu_usage": {"name": "CPU"},
+      "igpu_usage": {"name": "Intel GPU"},
+      "coral_latency": {"name": "Coral latency"},
+      "fps": {"name": "FPS"},
+      "active_objects": {"name": "Active objects"},
+      "detector_latency": {"name": "Detector latency"}
     }
   }
 }

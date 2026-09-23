@@ -42,9 +42,10 @@ OBJECT_TITLES: dict[str, tuple[str, str]] = {
     "cow": ("🐄", "Wykryto krowę"),
     "elephant": ("🐘", "Wykryto słonia"),
     "bear": ("🐻", "Wykryto niedźwiedzia"),
+    "glare": ("🔦", "Silne oślepianie kamery"),
 }
 
-DIRECT_TYPES = {"prealert", "confirmed", "repeat"}
+DIRECT_TYPES = {"prealert", "confirmed", "repeat", "glare_approach"}
 
 
 def _score_percent(value: Any) -> int | None:
@@ -87,13 +88,24 @@ def _repeat_number(data: dict[str, Any]) -> int:
         return 1
 
 
+def _percent(value: Any) -> int | None:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v <= 1.0:
+        v *= 100.0
+    return max(0, min(999, round(v)))
+
+
 class VeyraNotificationManager:
     """Forward Veyra's native notification lifecycle to Companion App.
 
     Veyra CORE owns cadence and false-positive filtering. The integration does
     not debounce or rate-limit valid alarms. Native CORE publishes
-    prealert/confirmed/repeat on mqtt.notifications_topic; older CORE builds are
-    still supported through the Frigate-style events topic.
+    prealert/confirmed/repeat and Glare Motion Guard alarms on
+    mqtt.notifications_topic; older CORE builds are still supported through the
+    Frigate-style events topic.
     """
 
     def __init__(self, hass: HomeAssistant, entry, runtime) -> None:
@@ -237,17 +249,31 @@ class VeyraNotificationManager:
 
         camera = str(data.get("camera") or "kamera")
         label = str(data.get("label") or "obiekt")
-        score = _score_percent(
-            data.get("snapshot_score", data.get("score", data.get("top_score")))
-        )
         repeat = _repeat_number(data)
 
-        title = self._title(label)
-        message = self._camera_name(camera)
-        if score is not None and score > 0:
-            message += f"\n• pewność {score}%"
-        if kind == "repeat" or repeat > 2:
-            message += f"\n• alarm {repeat}"
+        if kind == "glare_approach":
+            title = "🚨 Ktoś zbliża się i oślepia kamerę"
+            message = self._camera_name(camera)
+            message += "\n• wykryto ruchome, rosnące źródło silnego światła"
+            growth = data.get("growth")
+            overlap = _percent(data.get("motion_overlap"))
+            try:
+                if growth is not None and float(growth) > 1.0:
+                    message += f"\n• wzrost glare {float(growth):.2f}×"
+            except (TypeError, ValueError):
+                pass
+            if overlap is not None:
+                message += f"\n• zgodność z ruchem {overlap}%"
+        else:
+            score = _score_percent(
+                data.get("snapshot_score", data.get("score", data.get("top_score")))
+            )
+            title = self._title(label)
+            message = self._camera_name(camera)
+            if score is not None and score > 0:
+                message += f"\n• pewność {score}%"
+            if kind == "repeat" or repeat > 2:
+                message += f"\n• alarm {repeat}"
 
         notification_data = self._payload(
             data, event_id, camera, level, kind=kind, repeat=repeat
@@ -291,20 +317,18 @@ class VeyraNotificationManager:
         except (TypeError, ValueError):
             when = 0
 
-        # Every lifecycle step uses a separate tag. This is important for both
-        # delivery reliability and haptics: confirmed/repeat must create a fresh
-        # phone alert instead of silently replacing the previous notification.
         if kind == "prealert":
             tag = f"veyra_{event_id}_prealert"
         elif kind == "confirmed":
             tag = f"veyra_{event_id}_confirmed"
         elif kind == "repeat":
             tag = f"veyra_{event_id}_repeat_{repeat}"
+        elif kind == "glare_approach":
+            tag = f"veyra_{camera}_glare_{event_id}"
         else:
             tag = f"veyra_{event_id}"
 
         payload: dict[str, Any] = {
-            "image": image,
             "tag": tag,
             "group": f"veyra_{camera}",
             "url": "/lovelace/monitoring",
@@ -316,6 +340,11 @@ class VeyraNotificationManager:
                 }
             ],
         }
+        # Glare Motion Guard is not a persisted gallery event. Do not point the
+        # Companion App at an event-image URL that cannot exist; the alert still
+        # opens the live monitoring view immediately.
+        if kind != "glare_approach":
+            payload["image"] = image
         if when > 0:
             payload["when"] = when
 
@@ -330,13 +359,6 @@ class VeyraNotificationManager:
             )
             return payload
 
-        # 0.3.1: every non-silent VEYRA delivery is an actual alert.
-        # Android: ttl/priority avoids Doze delay; a NEW channel name forces
-        # Android 8+ to create the channel with vibration enabled because channel
-        # vibration/importance are frozen after first creation.
-        # iOS: sound + interruption-level produces the system haptic according
-        # to iOS notification/haptic settings; Critical remains available for
-        # users who want to bypass mute/Focus as well.
         payload.update(
             {
                 "ttl": 0,

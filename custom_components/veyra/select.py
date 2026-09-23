@@ -24,6 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     runtime = entry.runtime_data
     classes = ((runtime.info.get("model") or {}).get("classes") or [])
     entities = []
+    labels: set[str] = set()
     for item in classes:
         if isinstance(item, dict):
             label = str(item.get("name") or f"class_{item.get('id', '')}")
@@ -31,7 +32,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         else:
             label = str(item)
             class_id = None
+        labels.add(label)
         entities.append(VeyraClassNotificationSelect(runtime, entry, label, class_id))
+
+    # Glare Motion Guard is a security signal rather than a Coral model class,
+    # but it uses the same notification-level control in Home Assistant.
+    if "glare" not in labels:
+        entities.append(VeyraClassNotificationSelect(runtime, entry, "glare", "glare"))
     async_add_entities(entities)
 
 
@@ -47,7 +54,11 @@ class VeyraClassNotificationSelect(VeyraEntity, SelectEntity):
         self.class_id = class_id
         safe = "".join(ch if ch.isalnum() else "_" for ch in label.lower()).strip("_")
         self._attr_unique_id = f"{self.instance_id}_notification_level_{class_id if class_id is not None else safe}"
-        self._attr_name = f"Powiadomienia · {label}"
+        self._attr_name = (
+            "Powiadomienia · oślepianie kamery"
+            if label == "glare"
+            else f"Powiadomienia · {label}"
+        )
 
     @property
     def current_option(self) -> str:

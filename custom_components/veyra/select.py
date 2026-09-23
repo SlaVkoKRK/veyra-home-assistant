@@ -136,7 +136,9 @@ class VeyraNotificationSelectManager:
             current = set(self._entities) - {"glare"}
 
             # Also clean stale registry entries left by older integration versions,
-            # which used to register every model class on startup.
+            # which used to register every model class on startup. Do not remove a
+            # registry row while the matching entity object is still mounted; live
+            # removals below handle those in the correct order.
             registry = er.async_get(self.hass)
             allowed_unique_ids = {
                 _notification_unique_id(self._entities["glare"].instance_id, "glare", "glare")
@@ -150,11 +152,17 @@ class VeyraNotificationSelectManager:
                     )
                 )
             prefix = f"{self._entities['glare'].instance_id}_notification_level_"
+            mounted_entity_ids = {
+                entity.entity_id
+                for entity in self._entities.values()
+                if entity.entity_id
+            }
             for reg_entry in er.async_entries_for_config_entry(registry, self.entry.entry_id):
                 if (
                     reg_entry.domain == "select"
                     and str(reg_entry.unique_id).startswith(prefix)
                     and reg_entry.unique_id not in allowed_unique_ids
+                    and reg_entry.entity_id not in mounted_entity_ids
                 ):
                     registry.async_remove(reg_entry.entity_id)
 

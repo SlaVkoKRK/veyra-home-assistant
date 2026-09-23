@@ -33,7 +33,7 @@ PLATFORMS: list[Platform] = [
 
 def default_class_level(label: str) -> str:
     label = str(label or "").strip().lower()
-    if label == "person":
+    if label in {"person", "glare"}:
         return LEVEL_URGENT
     if label in {"car", "truck", "bicycle", "motorcycle", "bus"}:
         return LEVEL_URGENT

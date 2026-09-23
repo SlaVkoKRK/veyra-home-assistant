@@ -17,6 +17,7 @@ Do konfiguracji podajesz tylko adres IP / host Veyra i port WWW Veyra (domyślni
 
 - Veyra **0.8.3+**; natywny lifecycle powiadomień `prealert / confirmed / repeat` jest używany automatycznie przez VEYRA 1.0.7+,
 - **Glare Motion Guard** wymaga VEYRA **1.2.76+** i integracji HACS **0.3.2+**,
+- dynamiczne encje powiadomień tylko dla klas aktywnych na kamerach są dostępne od HACS **0.3.3**,
 - Home Assistant **2025.6.0+**,
 - skonfigurowana integracja MQTT w Home Assistant korzystająca z tego samego brokera co Veyra,
 - Home Assistant Companion App na telefonach otrzymujących push.
@@ -38,11 +39,22 @@ Jeśli CORE nie udostępnia `notifications_topic`, integracja automatycznie wrac
 
 Od **0.3.2** integracja odbiera z VEYRA CORE alarm `glare_approach`. Domyślnie ma poziom **Pilne** i wysyła komunikat **„Ktoś zbliża się i oślepia kamerę”**. Alert jest generowany przez CORE dopiero wtedy, gdy maska GLARE pokrywa się z ruchem i obszar oślepienia rośnie w czasie — sama statyczna lampa lub pojedynczy skok ekspozycji nie wystarczają.
 
-Dla każdej kamery powstaje też `binary_sensor` **Zbliżające oślepienie** z atrybutami diagnostycznymi: score, wzrost, overlap z ruchem, udział powierzchni, czas i licznik alarmów. Poziom powiadomienia można ustawić osobno przez encję **Powiadomienia · oślepianie kamery**.
+Dla każdej kamery powstaje też `binary_sensor` **Zbliżające oślepienie** z atrybutami diagnostycznymi: score, wzrost, overlap z ruchem, udział powierzchni, czas i licznik alarmów. Poziom powiadomienia można ustawić osobno przez encję **Oślepianie kamery · powiadomienia**.
 
 ## Poziomy powiadomień klas
 
-Dla klas dostępne są poziomy: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyczne`. Klasy modelu są pobierane dynamicznie z Veyra — integracja nie ma zaszytej listy obiektów. Glare Motion Guard jest osobnym sygnałem bezpieczeństwa i dostaje własną encję poziomu powiadomienia.
+Dla klas dostępne są poziomy: `Wyłączone`, `Ciche`, `Normalne`, `Pilne`, `Krytyczne`.
+
+Od **0.3.3** encje konfiguracji powiadomień są tworzone **tylko dla klas faktycznie wybranych na co najmniej jednej kamerze**. Przykładowo, jeśli kamery używają łącznie `person`, `car`, `motorcycle`, `truck` i `bear`, tylko te pięć klas pojawi się w Home Assistant — nawet jeśli model zna 17 lub więcej klas.
+
+Lista jest synchronizowana automatycznie z VEYRA:
+
+- dodanie klasy na dowolnej kamerze tworzy jej encję powiadomień,
+- jeśli ta sama klasa pozostaje na innej kamerze, encja zostaje,
+- usunięcie klasy ze wszystkich kamer usuwa jej encję również z rejestru encji Home Assistant,
+- poziom wybrany wcześniej pozostaje zapisany w opcjach integracji, więc po ponownym dodaniu klasy może zostać przywrócony.
+
+**Oślepianie kamery · powiadomienia** jest sygnałem bezpieczeństwa niezależnym od modelu i jest zawsze dostępne. Integracja dodaje tę konfigurację jako pierwszą, a jej nazwa powoduje również wyświetlanie przed zwykłymi `Powiadomienia · klasa` w standardowych listach Home Assistant.
 
 ## Telefony docelowe
 

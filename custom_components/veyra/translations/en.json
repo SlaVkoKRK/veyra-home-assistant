@@ -18,7 +18,7 @@
     "step": {
       "init": {
         "title": "Veyra notifications",
-        "description": "Select Home Assistant Companion devices. Veyra forwards the native prealert, confirmed and repeat lifecycle. Repeat remains enabled and its cadence is controlled by CORE; the integration does not mute or rate-limit valid alarms.",
+        "description": "Select Home Assistant Companion devices. Veyra forwards prealert, confirmed, repeat and Glare Motion Guard alerts. CORE controls alarm cadence; the integration does not mute valid alarms.",
         "data": {"notify_targets": "Notification devices"}
       }
     }
@@ -33,6 +33,7 @@
     "binary_sensor": {
       "motion": {"name": "Motion"},
       "objects": {"name": "Object"},
+      "glare_approach": {"name": "Approaching glare"},
       "night": {"name": "Night mode"},
       "online": {"name": "Connection"}
     },

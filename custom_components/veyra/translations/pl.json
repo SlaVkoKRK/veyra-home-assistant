@@ -19,7 +19,7 @@
     "step": {
       "init": {
         "title": "Powiadomienia Veyra",
-        "description": "Wybierz urządzenia z aplikacją Home Assistant. Veyra natywnie przekazuje prealert, confirmed i repeat. Repeat pozostaje aktywny — jego rytm ustala CORE; integracja nie wycisza i nie ogranicza poprawnych alarmów.",
+        "description": "Wybierz urządzenia z aplikacją Home Assistant. Veyra natywnie przekazuje prealert, confirmed, repeat oraz alarm Glare Motion Guard. Rytm alarmów ustala CORE; integracja nie wycisza poprawnych alarmów.",
         "data": {"notify_targets": "Urządzenia otrzymujące powiadomienia"}
       }
     }
@@ -34,6 +34,7 @@
     "binary_sensor": {
       "motion": {"name": "Ruch"},
       "objects": {"name": "Obiekt"},
+      "glare_approach": {"name": "Zbliżające oślepienie"},
       "night": {"name": "Tryb nocny"},
       "online": {"name": "Połączenie"}
     },

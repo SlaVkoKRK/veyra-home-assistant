@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import CONF_CLASS_LEVELS, DOMAIN, NOTIFICATION_LEVELS, default_class_level
+from .const import CONF_CLASS_LEVELS, NOTIFICATION_LEVELS, default_class_level
 from .entity import VeyraEntity
 
 PARALLEL_UPDATES = 0
@@ -23,6 +23,12 @@ LEVEL_TO_PL = {
     "critical": "Krytyczne",
 }
 PL_TO_LEVEL = {value: key for key, value in LEVEL_TO_PL.items()}
+
+
+def _notification_unique_id(instance_id: str, label: str, class_id) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in label.lower()).strip("_")
+    token = class_id if class_id is not None else safe
+    return f"{instance_id}_notification_level_{token}"
 
 
 def _model_class_map(runtime) -> dict[str, Any]:
@@ -129,9 +135,31 @@ class VeyraNotificationSelectManager:
 
             current = set(self._entities) - {"glare"}
 
+            # Also clean stale registry entries left by older integration versions,
+            # which used to register every model class on startup.
+            registry = er.async_get(self.hass)
+            allowed_unique_ids = {
+                _notification_unique_id(self._entities["glare"].instance_id, "glare", "glare")
+            }
+            for label in desired:
+                allowed_unique_ids.add(
+                    _notification_unique_id(
+                        self._entities["glare"].instance_id,
+                        label,
+                        class_map.get(label),
+                    )
+                )
+            prefix = f"{self._entities['glare'].instance_id}_notification_level_"
+            for reg_entry in er.async_entries_for_config_entry(registry, self.entry.entry_id):
+                if (
+                    reg_entry.domain == "select"
+                    and str(reg_entry.unique_id).startswith(prefix)
+                    and reg_entry.unique_id not in allowed_unique_ids
+                ):
+                    registry.async_remove(reg_entry.entity_id)
+
             # Remove first. If a class disappears from all cameras, its entity is
             # removed from the entity registry as well, not merely marked unavailable.
-            registry = er.async_get(self.hass)
             for label in sorted(current - desired):
                 entity = self._entities.pop(label, None)
                 if entity is None:
@@ -165,10 +193,8 @@ class VeyraClassNotificationSelect(VeyraEntity, SelectEntity):
         self.entry = entry
         self.label = label
         self.class_id = class_id
-        safe = "".join(ch if ch.isalnum() else "_" for ch in label.lower()).strip("_")
-        self._attr_unique_id = (
-            f"{self.instance_id}_notification_level_"
-            f"{class_id if class_id is not None else safe}"
+        self._attr_unique_id = _notification_unique_id(
+            self.instance_id, label, class_id
         )
         if label == "glare":
             # The name also sorts before the regular "Powiadomienia · ..."
